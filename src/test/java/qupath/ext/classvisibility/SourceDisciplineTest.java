@@ -7,7 +7,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,6 +77,50 @@ class SourceDisciplineTest {
             }
         }
         assertThat(violations).as("destructive API calls in main sources").isEmpty();
+    }
+
+    /**
+     * Every display string must be reachable, and every key asked for must exist.
+     *
+     * <p>An orphaned string reads, to anyone auditing the shipped vocabulary, as a feature that
+     * exists -- and a menu built from a key nobody uses is indistinguishable from a menu whose
+     * item silently does nothing. That is the same defect a user hit in 0.1.0, in a form a
+     * reviewer can catch before a user does. The reverse direction is worse and cheaper: a key
+     * asked for and not present throws {@code MissingResourceException} at runtime, on whichever
+     * click first needs it.</p>
+     */
+    @Test
+    void everyDisplayStringIsUsedAndEveryUsedKeyExists() throws IOException {
+        Path bundle = Path.of("src", "main", "resources", "qupath", "ext", "classvisibility",
+                "ui", "strings.properties");
+        Set<String> declared = new LinkedHashSet<>();
+        boolean continuation = false;
+        for (String line : Files.readAllLines(bundle, StandardCharsets.UTF_8)) {
+            boolean nextContinuation = line.endsWith("\\");
+            if (!continuation) {
+                String trimmed = line.strip();
+                int eq = trimmed.indexOf('=');
+                if (!trimmed.isEmpty() && !trimmed.startsWith("#") && eq > 0) {
+                    declared.add(trimmed.substring(0, eq).strip());
+                }
+            }
+            continuation = nextContinuation;
+        }
+        assertThat(declared).as("keys parsed from the bundle").isNotEmpty();
+
+        Set<String> referenced = new LinkedHashSet<>();
+        Pattern usage = Pattern.compile("Strings\\.(?:get|format)\\(\"([^\"]+)\"");
+        for (Path file : javaSources()) {
+            Matcher matcher = usage.matcher(Files.readString(file, StandardCharsets.UTF_8));
+            while (matcher.find()) {
+                referenced.add(matcher.group(1));
+            }
+        }
+
+        assertThat(referenced).as("keys asked for but missing from strings.properties")
+                .isSubsetOf(declared);
+        assertThat(declared).as("strings declared but never shown to anyone")
+                .isSubsetOf(referenced);
     }
 
     @Test

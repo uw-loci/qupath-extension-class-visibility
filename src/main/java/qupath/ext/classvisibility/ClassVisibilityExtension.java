@@ -222,6 +222,10 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         } else if (window != null) {
             window.show();
         }
+        // Selecting an already-selected tab, or raising an already-frontmost window, changes
+        // nothing the user can see. Moving the caret into Find does, and it is where they were
+        // going anyway -- so "Show panel" is never a click that appears to do nothing.
+        Platform.runLater(pane::focusFind);
         syncToolbarState();
     }
 
@@ -417,10 +421,24 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     private void syncToolbarState() {
         if (toolbarButton != null) {
             toolbarButton.setSelected(isOpen());
-            toolbarButton.setTooltip(new Tooltip(isOpen()
-                    ? Strings.get("tooltip.toolbar.shown")
-                    : Strings.get("tooltip.toolbar.hidden")));
+            toolbarButton.setAccessibleText(toolbarTooltipText());
         }
+    }
+
+    /**
+     * What the toolbar button will do on the <b>next</b> click, in words.
+     *
+     * <p>Three outcomes, not two: the button opens, raises, or closes. A tooltip that only
+     * admitted to raising is what sent a user hunting through the context menu for a hide control
+     * the button already had.</p>
+     *
+     * @return the tooltip text for the current state
+     */
+    private String toolbarTooltipText() {
+        if (!isOpen()) {
+            return Strings.get("tooltip.toolbar.closed");
+        }
+        return isPanelVisible() ? Strings.get("tooltip.toolbar.close") : Strings.get("tooltip.toolbar.raise");
     }
 
     private void showHelp() {
@@ -515,8 +533,14 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
 
     private ToggleButton buildToolbarButton() {
         ToggleButton button = new ToggleButton();
-        button.setTooltip(new Tooltip(Strings.get("tooltip.toolbar.hidden")));
-        button.setAccessibleText(Strings.get("tooltip.toolbar.hidden"));
+        // The text is recomputed every time the tooltip is about to appear. Setting it only from
+        // syncToolbarState() would go stale, because "is the panel visible" also changes when the
+        // user selects another tab or collapses the analysis pane -- neither of which runs any
+        // code of ours.
+        Tooltip tip = new Tooltip();
+        tip.setOnShowing(e -> tip.setText(toolbarTooltipText()));
+        button.setTooltip(tip);
+        button.setAccessibleText(Strings.get("tooltip.toolbar.closed"));
         button.getStyleClass().add("toolbar-button");
         button.setGraphic(buildIcon(button));
         button.setOnAction(e -> {
@@ -582,30 +606,37 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         resetAll.setOnAction(e -> {
             // Mirrors QuPath's own restoreClassVisibilityDefaults(): mode, exact flag and set,
             // all three, in that order.
+            boolean wouldChange = !options.selectedClassesProperty().isEmpty()
+                    || options.getUseExactSelectedClasses()
+                    || options.getSelectedClassVisibilityMode()
+                            != OverlayOptions.ClassVisibilityMode.HIDE_SELECTED;
             VisibilityStateStore.captureIfAbsent(options);
             options.setSelectedClassVisibilityMode(OverlayOptions.ClassVisibilityMode.HIDE_SELECTED);
             options.setUseExactSelectedClasses(false);
             options.selectedClassesProperty().clear();
+            // Reset from an already-default state changes nothing on screen. Saying so is the
+            // difference between "this control is broken" and "there was nothing to do".
+            Dialogs.showInfoNotification(Strings.get("notify.title"), wouldChange
+                    ? Strings.get("notify.resetApplied")
+                    : Strings.get("notify.resetNoChange"));
         });
 
-        // Whichever move is available from the current state, and neither when the panel is shut.
-        boolean canDock = isOpen() && !isDocked();
-        boolean canUndock = isOpen() && isDocked() && tab.getTabPane() != null;
-        CustomMenuItem surfaceItem = canUndock
-                ? menuItem(Strings.get("menu.undockToWindow"),
-                        Strings.get("tooltip.menu.undockToWindow"), false)
-                : menuItem(Strings.get("menu.dockAsTab"),
-                        Strings.get("tooltip.menu.dockAsTab"), !canDock);
-        surfaceItem.setOnAction(e -> {
-            if (canUndock) {
-                undockToWindow();
-            } else if (canDock) {
-                dockAsTab();
+        // One dynamic item, because the menu is rebuilt on every right-click: "Show panel" when
+        // the panel is closed is a real action, and when it is open it is not -- which is exactly
+        // how a Show item that never became Hide read as a broken build.
+        CustomMenuItem showHide = isOpen()
+                ? menuItem(Strings.get("menu.hide"), Strings.get("tooltip.menu.hide"), false)
+                : menuItem(Strings.get("menu.show"), Strings.get("tooltip.menu"), false);
+        // Hiding routes through closePanel() rather than a bespoke close path, so the R2 guard
+        // fires whichever way the user dismisses the panel. A second dismissal route that skipped
+        // the guard would reintroduce the footgun this extension exists to prevent.
+        showHide.setOnAction(e -> {
+            if (isOpen()) {
+                closePanel();
+            } else {
+                showPanel();
             }
         });
-
-        CustomMenuItem show = menuItem(Strings.get("menu.show"), Strings.get("tooltip.menu"), false);
-        show.setOnAction(e -> showPanel());
 
         CustomMenuItem help = menuItem(Strings.get("menu.help"), null, false);
         help.setOnAction(e -> showHelp());
@@ -616,9 +647,28 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
                 new SeparatorMenuItem(),
                 resetAll,
                 new SeparatorMenuItem(),
-                show,
-                surfaceItem,
-                help);
+                showHide);
+
+        // The surface move is offered only when there is a panel to move. With the panel closed
+        // it would be an item that does nothing at all -- the same defect in a different place.
+        boolean canDock = isOpen() && !isDocked();
+        boolean canUndock = isOpen() && isDocked() && tab.getTabPane() != null;
+        if (canDock || canUndock) {
+            CustomMenuItem surfaceItem = canUndock
+                    ? menuItem(Strings.get("menu.undockToWindow"),
+                            Strings.get("tooltip.menu.undockToWindow"), false)
+                    : menuItem(Strings.get("menu.dockAsTab"),
+                            Strings.get("tooltip.menu.dockAsTab"), false);
+            surfaceItem.setOnAction(e -> {
+                if (canUndock) {
+                    undockToWindow();
+                } else {
+                    dockAsTab();
+                }
+            });
+            menu.getItems().add(surfaceItem);
+        }
+        menu.getItems().add(help);
         return menu;
     }
 

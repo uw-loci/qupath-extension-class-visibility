@@ -54,7 +54,8 @@ If you would rather have it docked, click **Dock as tab** at the top right of th
 filter you typed, the sort you chose. Once docked, QuPath's own drag-the-tab-out gesture works too.
 
 Right-click the toolbar button for those two moves plus save/restore of the whole visibility
-state, a full reset, and help.
+state, a full reset, and help. The toolbar button itself closes the panel when it is already in
+front; its tooltip always says which of open, raise or close the next click will do.
 
 The panel starts closed in every session. It does not reopen itself at startup, in either shape.
 

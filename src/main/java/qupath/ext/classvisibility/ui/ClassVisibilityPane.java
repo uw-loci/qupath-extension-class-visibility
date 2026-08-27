@@ -1016,6 +1016,18 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         }
         updatePlaceholders();
         updateHeaders();
+        updateBulkButtonState();
+    }
+
+    /**
+     * Both bulk buttons act on the currently listed rows, so with nothing listed -- an empty
+     * image, or a filter that matches no class -- they have nothing to act on. Disabled beats a
+     * click that appears to be ignored; the list's placeholder says why the list is empty.
+     */
+    private void updateBulkButtonState() {
+        boolean nothingListed = filteredClasses.isEmpty();
+        checkAllButton.setDisable(nothingListed);
+        uncheckAllButton.setDisable(nothingListed);
     }
 
     private void updateHeaders() {
@@ -1088,6 +1100,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         updateCombinationLabels();
         updateRuleTable();
         updateStatus();
+        updateBulkButtonState();
         classTable.refresh();
         componentTable.refresh();
     }
@@ -1165,6 +1178,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             rows.add(new RuleRow(entry, name, source, status));
         }
         ruleRows.setAll(rows);
+        // Nothing to clear is not the same as a broken button. The table's own placeholder --
+        // "No rules are active." -- is the explanation sitting right beside it.
+        clearRulesButton.setDisable(rows.isEmpty());
         int count = rows.size();
         rulesPane.setText(count == 0
                 ? Strings.get("rules.none")

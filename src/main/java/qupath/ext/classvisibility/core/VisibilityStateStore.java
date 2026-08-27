@@ -1,0 +1,77 @@
+package qupath.ext.classvisibility.core;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import qupath.lib.gui.viewer.OverlayOptions;
+
+/**
+ * Session-scoped holder for one {@link VisibilitySnapshot}.
+ *
+ * <p>Static because the snapshot must outlive the panel. The tab can be removed and re-added,
+ * and the toolbar button's context menu offers <i>Restore visibility state</i> whether or not
+ * the panel is open -- a user whose viewer has gone blank should not have to find and open the
+ * panel first.</p>
+ *
+ * <p>The snapshot is <b>not</b> persisted across restarts, deliberately. It records a live view
+ * state including {@code selectedClasses}, which QuPath itself does not persist; writing it back
+ * at the next launch would make this extension the only thing in QuPath capable of hiding
+ * objects across a restart.</p>
+ */
+public final class VisibilityStateStore {
+
+    private static final Logger logger = LoggerFactory.getLogger(VisibilityStateStore.class);
+
+    private static VisibilitySnapshot snapshot;
+
+    private VisibilityStateStore() {
+        // Utility class.
+    }
+
+    /** @return whether a snapshot exists to restore. */
+    public static synchronized boolean hasSnapshot() {
+        return snapshot != null;
+    }
+
+    /**
+     * Take a snapshot now, replacing any previous one. This is the explicit
+     * <i>Save visibility state</i> action.
+     *
+     * @param options the options to snapshot
+     */
+    public static synchronized void save(OverlayOptions options) {
+        snapshot = VisibilitySnapshot.capture(options);
+        logger.info("Saved visibility state ({} class rules, mode {})",
+                snapshot.selectedClasses().size(), snapshot.visibilityMode());
+    }
+
+    /**
+     * Take a snapshot only if none exists yet.
+     *
+     * <p>Called before the panel's first mutation in a session. That is what makes
+     * <i>Restore visibility state</i> a recovery route rather than a power-user feature: the
+     * person who needs it is the person who did not plan ahead.</p>
+     *
+     * @param options the options to snapshot
+     */
+    public static synchronized void captureIfAbsent(OverlayOptions options) {
+        if (snapshot == null) {
+            snapshot = VisibilitySnapshot.capture(options);
+            logger.info("Captured automatic visibility snapshot before first change");
+        }
+    }
+
+    /**
+     * Write the snapshot back.
+     *
+     * @param options the options to restore into
+     * @return true if a snapshot existed and was applied
+     */
+    public static synchronized boolean restore(OverlayOptions options) {
+        if (snapshot == null) {
+            return false;
+        }
+        snapshot.restore(options);
+        logger.info("Restored saved visibility state");
+        return true;
+    }
+}

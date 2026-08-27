@@ -12,8 +12,8 @@ import qupath.lib.gui.prefs.PathPrefs;
 /**
  * Persistent preferences for the Class Visibility extension.
  *
- * <p>What is here is view state: which profile divider the user dragged where, how they like the
- * lists scoped and sorted, and whether the tab comes back at startup.</p>
+ * <p>What is here is view state: the floating window's geometry, which profile divider the user
+ * dragged where, and how they like the lists scoped.</p>
  *
  * <p><b>What is deliberately NOT here, so nobody adds it later as a nice touch:</b></p>
  * <ul>
@@ -36,7 +36,10 @@ public final class ClassVisibilityPreferences {
     /** Preference-key namespace; collision-free within QuPath's flat key space. */
     private static final String PREFIX = "classvisibility.";
 
-    private static BooleanProperty showTabAtStartupProperty;
+    private static DoubleProperty windowXProperty;
+    private static DoubleProperty windowYProperty;
+    private static DoubleProperty windowWidthProperty;
+    private static DoubleProperty windowHeightProperty;
     private static DoubleProperty wideDividerProperty;
     private static DoubleProperty narrowDividerProperty;
     private static BooleanProperty rulesExpandedProperty;
@@ -59,8 +62,10 @@ public final class ClassVisibilityPreferences {
         }
         logger.info("Installing Class Visibility preferences");
 
-        showTabAtStartupProperty = PathPrefs.createPersistentPreference(
-                PREFIX + "showTabAtStartup", false);
+        windowXProperty = PathPrefs.createPersistentPreference(PREFIX + "windowX", SENTINEL);
+        windowYProperty = PathPrefs.createPersistentPreference(PREFIX + "windowY", SENTINEL);
+        windowWidthProperty = PathPrefs.createPersistentPreference(PREFIX + "windowWidth", SENTINEL);
+        windowHeightProperty = PathPrefs.createPersistentPreference(PREFIX + "windowHeight", SENTINEL);
         wideDividerProperty = PathPrefs.createPersistentPreference(
                 PREFIX + "wideDivider", 0.55);
         narrowDividerProperty = PathPrefs.createPersistentPreference(
@@ -95,10 +100,40 @@ public final class ClassVisibilityPreferences {
         }
     }
 
-    /** @return whether the tab is restored automatically when QuPath starts. */
-    public static BooleanProperty showTabAtStartupProperty() {
+    /** Sentinel meaning "no saved value yet" -- the window falls back to centre-on-main-window. */
+    public static final double SENTINEL = -1.0;
+
+    /** @return the saved floating-window geometry, or {@link #SENTINEL} values if never shown. */
+    public static double[] getWindowGeometry() {
         ensureInstalled();
-        return showTabAtStartupProperty;
+        return new double[] {
+                windowXProperty.get(), windowYProperty.get(),
+                windowWidthProperty.get(), windowHeightProperty.get()
+        };
+    }
+
+    /**
+     * Record the floating window's geometry. Values are stored verbatim; the restore side clamps
+     * to the screens that exist at the time, so a monitor disconnected between sessions cannot
+     * strand the window off-screen.
+     *
+     * @param x window x
+     * @param y window y
+     * @param width window width
+     * @param height window height
+     */
+    public static void saveWindowGeometry(double x, double y, double width, double height) {
+        ensureInstalled();
+        windowXProperty.set(x);
+        windowYProperty.set(y);
+        windowWidthProperty.set(width);
+        windowHeightProperty.set(height);
+    }
+
+    /** @return true when the saved geometry is missing or unusable. */
+    public static boolean isSentinelGeometry() {
+        double[] g = getWindowGeometry();
+        return g[0] == SENTINEL || g[1] == SENTINEL || g[2] <= 0 || g[3] <= 0;
     }
 
     /** @return the split divider position used in the wide (undocked) profile. */

@@ -59,13 +59,17 @@ import java.util.Set;
 /**
  * The whole Class Visibility user interface, as a self-contained {@link BorderPane}.
  *
- * <p>Owns no {@code Stage}, no modality and no window geometry. QuPath owns the window in both
- * profiles -- docked as an analysis-pane tab, or undocked by
- * {@code FXUtils.makeTabUndockable} -- which is what keeps multi-monitor placement, HiDPI
- * positioning and geometry persistence out of this extension entirely.</p>
+ * <p><b>Surface-agnostic by construction, and that is load-bearing.</b> This pane holds no
+ * {@code Stage}, no {@code Tab}, no modality and no window geometry, and it never asks which of
+ * the three it is living in. That is what lets the panel move between a floating window
+ * ({@link ClassVisibilityStage}) and a docked analysis-pane tab by <b>re-parenting the same
+ * instance</b> -- so the user's rules, filter text, sort order and scroll position survive the
+ * move, because nothing is rebuilt.</p>
  *
- * <p>Two profiles from one pane, switched on the pane's own width with hysteresis so the layout
- * does not thrash while the user drags the analysis-pane divider.</p>
+ * <p>Two profiles from one pane -- wide and side-by-side, or narrow and stacked -- switched on
+ * the pane's <b>own</b> {@code widthProperty} with hysteresis. Driving it off the width rather
+ * than off the surface is why a narrow floating window and a wide docked pane both come out
+ * right, and why the layout does not thrash while a divider is dragged.</p>
  */
 public final class ClassVisibilityPane extends BorderPane implements ClassVisibilityController.View {
 
@@ -134,11 +138,14 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final Button switchToHideButton = new Button(Strings.get("button.switchToHide"));
     private final Button clearRulesButton = new Button(Strings.get("button.clearAllRules"));
     private final Button checkAllButton = new Button(Strings.get("button.checkAllListed"));
+    /** Dock / undock. Its label and action are supplied by whichever surface currently holds the pane. */
+    private final Button surfaceButton = new Button();
     private final Button uncheckAllButton = new Button(Strings.get("button.uncheckAllListed"));
 
     private final Label modeLabel = new Label(Strings.get("label.mode"));
     private final Label scopeLabel = new Label(Strings.get("label.scope"));
     private final Label findLabel = new Label(Strings.get("label.find"));
+    private final HBox imageRow = new HBox(6);
     private final HBox scopeRow = new HBox(4);
     private final HBox findRow = new HBox(4);
     private final HBox exactWarningBox = new HBox(6);
@@ -206,6 +213,33 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     }
 
     /**
+     * Supply the dock / undock control shown at the top right of the panel.
+     *
+     * <p>The pane deliberately does not know which surface it is in, so the surface tells it what
+     * the control should say and do. The same action is on the toolbar button's context menu; it
+     * is duplicated here because a user who never right-clicks a toolbar button would otherwise
+     * never find out that docking exists.</p>
+     *
+     * @param text the button label
+     * @param tooltip the button tooltip
+     * @param action what the button does
+     */
+    public void setSurfaceToggle(String text, String tooltip, Runnable action) {
+        surfaceButton.setText(text);
+        surfaceButton.setTooltip(new Tooltip(tooltip));
+        surfaceButton.setAccessibleText(tooltip);
+        surfaceButton.setOnAction(e -> action.run());
+        surfaceButton.setVisible(true);
+        surfaceButton.setManaged(true);
+    }
+
+    /** Hide the dock / undock control, for a surface in which neither move is meaningful. */
+    public void hideSurfaceToggle() {
+        surfaceButton.setVisible(false);
+        surfaceButton.setManaged(false);
+    }
+
+    /**
      * Put the caret in the {@code Find} field. At the design centre of 20-40 combinatorial class
      * names that field is the primary navigation control, not a convenience, so it takes focus
      * when the panel is first revealed.
@@ -257,8 +291,16 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private void buildUi() {
         setPadding(new Insets(6));
 
+        // Centre ellipsis, not the default trailing one: image names in a project share long
+        // prefixes and differ near the end, so a trailing ellipsis truncates away the only part
+        // that identifies the image -- and a truncated safeguard is not a safeguard.
         imageLabel.setTextOverrun(javafx.scene.control.OverrunStyle.CENTER_ELLIPSIS);
         imageLabel.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(imageLabel, Priority.ALWAYS);
+        surfaceButton.setVisible(false);
+        surfaceButton.setManaged(false);
+        imageRow.getChildren().setAll(imageLabel, surfaceButton);
+        imageRow.setAlignment(Pos.CENTER_LEFT);
 
         ToggleGroup modeGroup = new ToggleGroup();
         hideRadio.setToggleGroup(modeGroup);
@@ -301,7 +343,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         scopeRow.setAlignment(Pos.CENTER_LEFT);
         filterRow.setAlignment(Pos.CENTER_LEFT);
 
-        VBox header = new VBox(4, imageLabel, modeBox, exactWarningBox, filterBox);
+        VBox header = new VBox(4, imageRow, modeBox, exactWarningBox, filterBox);
         header.setPadding(new Insets(0, 0, 6, 0));
         setTop(header);
 

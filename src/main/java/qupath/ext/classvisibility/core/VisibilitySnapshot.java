@@ -32,7 +32,15 @@ import java.util.function.Predicate;
  * {@link #capture(OverlayOptions)} and {@link #restore(OverlayOptions)}; {@code restore} already
  * tolerates a field that a snapshot taken by an older version left null. This is a class rather
  * than a record for exactly that reason -- adding a component to a record changes its canonical
- * constructor, and these snapshots are held across a session.</p>
+ * constructor, and these snapshots are held across a session.
+ *
+ * <p><b>Opacity has a shorter lifetime than everything else here</b> (user, 2026-08-27): when
+ * per-group opacity ships it is to be dialog-scoped and cleared when the panel closes, not left
+ * behind. So it needs a snapshot taken at panel <i>open</i> and replayed at panel <i>close</i> --
+ * a different lifetime from this type's other use, which is a session-scoped recovery point the
+ * user restores on demand. Expect two instances with different lifetimes rather than one field
+ * bolted onto the existing one, and do not wire opacity into
+ * {@code VisibilityStateStore.captureIfAbsent}.</p>
  */
 public final class VisibilitySnapshot {
 

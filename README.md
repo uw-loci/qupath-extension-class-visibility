@@ -44,13 +44,19 @@ Not distributed through an extension catalog.
 
 ## Using it
 
-The panel is **not** added to the analysis pane until you ask for it -- QuPath already has five
-tabs there. Open it from the toolbar button (right of brightness/contrast) or from
-**Extensions > Class Visibility > Show panel**. Right-click the toolbar button for save/restore
-of the whole visibility state, a full reset, and help. A preference restores the tab at startup if
-you live in it.
+**The toolbar button (right of brightness/contrast) opens the panel as a window.** Installing this
+extension adds nothing to your analysis pane -- that pane already has five tabs, and you should
+not get a sixth just for installing something. **Extensions > Class Visibility > Show panel** does
+the same.
 
-Drag the tab out of the analysis pane to get a resizable window; QuPath owns that window.
+If you would rather have it docked, click **Dock as tab** at the top right of the panel, and
+**Undock to window** to send it back. Both moves keep everything you have set -- your rules, the
+filter you typed, the sort you chose. Once docked, QuPath's own drag-the-tab-out gesture works too.
+
+Right-click the toolbar button for those two moves plus save/restore of the whole visibility
+state, a full reset, and help.
+
+The panel starts closed in every session. It does not reopen itself at startup, in either shape.
 
 ## If everything has disappeared
 

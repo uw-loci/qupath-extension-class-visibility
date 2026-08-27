@@ -17,6 +17,7 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToolBar;
 import javafx.scene.control.Tooltip;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
 import javafx.scene.shape.ClosePath;
@@ -24,7 +25,6 @@ import javafx.scene.shape.LineTo;
 import javafx.scene.shape.MoveTo;
 import javafx.scene.shape.Path;
 import javafx.scene.shape.Rectangle;
-import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.stage.WindowEvent;
@@ -36,6 +36,7 @@ import org.slf4j.LoggerFactory;
 import qupath.ext.classvisibility.core.VisibilityStateStore;
 import qupath.ext.classvisibility.preferences.ClassVisibilityPreferences;
 import qupath.ext.classvisibility.ui.ClassVisibilityPane;
+import qupath.ext.classvisibility.ui.ClassVisibilityStage;
 import qupath.ext.classvisibility.ui.Strings;
 import qupath.fx.dialogs.Dialogs;
 import qupath.fx.utils.FXUtils;
@@ -50,20 +51,30 @@ import qupath.lib.gui.viewer.OverlayOptions;
 /**
  * QuPath extension entry point for the Class Visibility panel.
  *
- * <p>The panel is an <b>undockable analysis-pane tab</b>, per QuPath's own instruction to
- * extensions adding tabs ({@code QuPathGUI.getAnalysisTabPane()}'s javadoc). One implementation
- * yields both shapes: tall and narrow when docked, user-sized when the user drags it out. QuPath
- * owns the window, its geometry and its multi-monitor placement, so this extension owns no
- * {@code Stage} at all.</p>
+ * <p><b>The panel is a floating window first, and a tab only if the user asks.</b> Installing
+ * this extension adds nothing to anybody's analysis pane -- that pane already has five tabs, and
+ * permanently taking a sixth from every user who installs an extension is not ours to do.</p>
  *
- * <p>The tab is deliberately <b>not</b> added at install time. QuPath's analysis pane already has
- * five tabs; permanently taking a sixth from every user who installs the extension is rude. A
- * preference restores it at startup for people who live in it.</p>
+ * <p>Three states, every transition user-driven:</p>
+ * <pre>
+ *   CLOSED  --[toolbar button]--&gt;  FLOATING (a Stage)  --[Dock as tab]--&gt;  DOCKED (a Tab)
+ *      ^                                |                                        |
+ *      +--------[close]-----------------+           [Undock to window] &lt;---------+
+ * </pre>
  *
- * <p>The analysis {@code TabPane}'s closing policy is {@code UNAVAILABLE}, so our tab cannot
- * carry a close button and we must not change the policy -- that would make QuPath's own five
- * tabs closable as a side effect of installing this extension. The way out is therefore the
- * toolbar toggle, whose pressed state tracks whether the panel is installed.</p>
+ * <p>Docking and undocking <b>re-parent the same {@link ClassVisibilityPane} instance</b>; nothing
+ * is rebuilt, so the user's rules, filter text, sort order and scroll position survive the move.
+ * That is the whole reason the Pane is self-contained and surface-agnostic.</p>
+ *
+ * <p>Once docked, {@code FXUtils.makeTabUndockable(tab)} is applied so QuPath's own undock
+ * gesture works too. That is a bonus, not the mechanism -- and it is a second route out of DOCKED
+ * that this class does not control, so the state tracking tolerates QuPath moving the tab behind
+ * its back ({@code tab.getTabPane() == null} detects it).</p>
+ *
+ * <p>The analysis {@code TabPane}'s closing policy is {@code UNAVAILABLE} and must not be
+ * changed -- doing so would make QuPath's own five tabs closable as a side effect of installing
+ * this extension. A docked panel is therefore closed from the toolbar toggle, whose pressed state
+ * tracks whether the panel is open at all.</p>
  */
 public class ClassVisibilityExtension implements QuPathExtension, GitHubProject {
 
@@ -80,9 +91,24 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     private boolean installed = false;
 
     private QuPathGUI qupath;
-    private Tab tab;
+
+    /** The one Pane instance for the session. Null exactly when the panel is CLOSED. */
     private ClassVisibilityPane pane;
+
+    /** Non-null exactly in the FLOATING state. */
+    private ClassVisibilityStage window;
+
+    /** Non-null exactly in the DOCKED state, whether or not QuPath has undocked it since. */
+    private Tab tab;
+
     private ToggleButton toolbarButton;
+
+    /**
+     * True while a dock or undock is in flight. Both operations hide a Stage or remove a Tab, and
+     * without this the teardown handlers would read those as the user closing the panel and
+     * dispose the Pane mid-move.
+     */
+    private boolean reparenting = false;
 
     @Override
     public String getName() {
@@ -122,19 +148,18 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
                 installShutdownGuard();
                 // Defer the toolbar lookup so QuPath finishes building its toolbar first.
                 Platform.runLater(() -> Platform.runLater(() -> tryInsertToolbarButton(0)));
-                if (ClassVisibilityPreferences.showTabAtStartupProperty().get()) {
-                    revealPanel();
-                }
             } catch (Exception ex) {
                 logger.warn("Failed to install Class Visibility UI hooks: {}", ex.getMessage(), ex);
             }
         });
+        // Nothing is shown here. The panel starts CLOSED in every session -- no window, and above
+        // all no tab.
     }
 
     private void registerMenuItems() {
         var menu = qupath.getMenu("Extensions>" + EXTENSION_NAME, true);
         MenuItem showItem = new MenuItem(Strings.get("menu.show"));
-        showItem.setOnAction(e -> revealPanel());
+        showItem.setOnAction(e -> showPanel());
         MenuItem helpItem = new MenuItem(Strings.get("menu.help"));
         helpItem.setOnAction(e -> showHelp());
         menu.getItems().addAll(showItem, helpItem);
@@ -159,60 +184,121 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     }
 
     // ------------------------------------------------------------------------------------------
-    // Tab lifecycle
+    // Surface state machine
     // ------------------------------------------------------------------------------------------
 
+    /** @return true when the panel exists in either surface. */
+    private boolean isOpen() {
+        return pane != null;
+    }
+
+    /** @return true when the panel lives in a Tab, whether or not QuPath has undocked that tab. */
+    private boolean isDocked() {
+        return tab != null;
+    }
+
     /**
-     * Reveal the panel, creating the tab if necessary. Handles all four states the design
-     * enumerates: absent, present but unselected, present but undocked, and present but inside a
-     * collapsed analysis pane.
+     * Open the panel, or bring the existing one forward. From CLOSED this creates the floating
+     * window -- never a tab.
      */
-    private synchronized void revealPanel() {
-        TabPane tabPane = qupath.getAnalysisTabPane();
-        if (tabPane == null) {
-            // Not defensive decoration: getAnalysisTabPane() returns null whenever QuPath's main
-            // pane manager has not been built. With no Stage fallback there is nowhere to show.
-            Dialogs.showWarningNotification(Strings.get("notify.title"), Strings.get("notify.noTabPane"));
-            syncToolbarState();
+    private synchronized void showPanel() {
+        if (!isOpen()) {
+            pane = new ClassVisibilityPane(qupath);
+            attachToWindow();
             return;
         }
-        if (tab == null) {
-            createTab(tabPane);
-            syncToolbarState();
-            return;
-        }
-        if (tab.getTabPane() == null) {
-            // Undocked: QuPath owns that window. Raise it rather than trying to re-dock.
-            raiseUndockedWindow();
-        } else {
-            // A docked tab inside a collapsed analysis pane is invisible, and selecting it alone
-            // would look like the button did nothing.
-            if (!qupath.showAnalysisPaneProperty().get()) {
-                qupath.showAnalysisPaneProperty().set(true);
+        if (isDocked()) {
+            if (tab.getTabPane() == null) {
+                // QuPath's own undock gesture moved the tab into a window of its own.
+                raisePaneWindow();
+            } else {
+                // A docked tab inside a collapsed analysis pane is invisible, and selecting it
+                // alone would look like the button did nothing.
+                if (!qupath.showAnalysisPaneProperty().get()) {
+                    qupath.showAnalysisPaneProperty().set(true);
+                }
+                tab.getTabPane().getSelectionModel().select(tab);
             }
-            tab.getTabPane().getSelectionModel().select(tab);
+        } else if (window != null) {
+            window.show();
         }
         syncToolbarState();
     }
 
-    private void createTab(TabPane tabPane) {
-        pane = new ClassVisibilityPane(qupath);
-        tab = new Tab(Strings.get("tab.text"), pane);
+    /** Put the Pane in a floating window and wire that surface's gating and dock control. */
+    private void attachToWindow() {
+        window = new ClassVisibilityStage(qupath.getStage(), pane);
+        // A Pane in a visible window is always on screen, so its updates gate on nothing more
+        // than whether the window is showing.
+        pane.visibleForUpdatesProperty().unbind();
+        pane.visibleForUpdatesProperty().bind(window.getStage().showingProperty());
+        pane.setSurfaceToggle(Strings.get("menu.dockAsTab"),
+                Strings.get("tooltip.menu.dockAsTab"), this::dockAsTab);
+        window.getStage().addEventHandler(WindowEvent.WINDOW_HIDDEN, e -> {
+            if (!reparenting) {
+                closePanel();
+            }
+        });
+        window.show();
+        Platform.runLater(pane::focusFind);
+        syncToolbarState();
+        logger.info("Opened the Class visibility window");
+    }
+
+    /**
+     * Move the Pane out of its window and into a new tab in QuPath's analysis pane. The Pane
+     * instance is re-parented, not rebuilt, so nothing the user has set is lost.
+     */
+    private synchronized void dockAsTab() {
+        if (!isOpen() || isDocked() || window == null) {
+            return;
+        }
+        TabPane tabPane = qupath.getAnalysisTabPane();
+        if (tabPane == null) {
+            // Not defensive decoration: getAnalysisTabPane() returns null whenever QuPath's main
+            // pane manager has not been built. The panel stays in its window, which still works.
+            Dialogs.showWarningNotification(Strings.get("notify.title"), Strings.get("notify.noTabPane"));
+            return;
+        }
+        reparenting = true;
+        try {
+            ClassVisibilityPane released = window.releasePane();
+            window = null;
+            attachToTab(tabPane, released);
+        } finally {
+            reparenting = false;
+        }
+        logger.info("Docked the Class visibility panel as an analysis-pane tab");
+    }
+
+    private void attachToTab(TabPane tabPane, ClassVisibilityPane content) {
+        tab = new Tab(Strings.get("tab.text"), content);
         Tooltip tooltip = new Tooltip();
         tooltip.textProperty().bind(Bindings.createStringBinding(
-                () -> Strings.format("tab.tooltip", pane.titleProperty().get()),
-                pane.titleProperty()));
+                () -> Strings.format("tab.tooltip", content.titleProperty().get()),
+                content.titleProperty()));
         tab.setTooltip(tooltip);
 
-        // Update gating. Both halves of QuPath's own idiom matter: getTabPane() == null IS the
-        // undocked case, and dropping it would freeze an undocked panel. The showAnalysisPane
-        // term closes the leak QuPath's own "TODO: Handle analysis pane being entirely hidden"
-        // admits to, using core's property rather than a size heuristic.
+        // Update gating for the docked surface. Both halves of QuPath's own idiom matter:
+        // getTabPane() == null IS the QuPath-undocked case, and dropping it would freeze the
+        // panel in that window. The showAnalysisPane term closes the leak QuPath's own
+        // "TODO: Handle analysis pane being entirely hidden" admits to, using core's property
+        // rather than a size heuristic of ours.
         BooleanBinding visibleForUpdates = Bindings.createBooleanBinding(
                 () -> tab.getTabPane() == null
                         || (tab.isSelected() && qupath.showAnalysisPaneProperty().get()),
                 tab.tabPaneProperty(), tab.selectedProperty(), qupath.showAnalysisPaneProperty());
-        pane.visibleForUpdatesProperty().bind(visibleForUpdates);
+        content.visibleForUpdatesProperty().unbind();
+        content.visibleForUpdatesProperty().bind(visibleForUpdates);
+
+        // QuPath can undock this tab itself. While it has, our own undock control would be
+        // meaningless -- the panel is already in a window, and stealing the content would leave
+        // QuPath holding an empty stage.
+        tab.tabPaneProperty().addListener((obs, oldValue, newValue) -> {
+            updateSurfaceToggleForTab();
+            syncToolbarState();
+        });
+        updateSurfaceToggleForTab();
 
         tabPane.getTabs().add(tab);
         FXUtils.makeTabUndockable(tab);
@@ -220,48 +306,118 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             qupath.showAnalysisPaneProperty().set(true);
         }
         tabPane.getSelectionModel().select(tab);
-        Platform.runLater(pane::focusFind);
-        logger.info("Added Class visibility tab to the analysis pane");
-    }
-
-    /** Remove the tab, dispose the panel, and run the R2 guard. */
-    private synchronized void hidePanel() {
-        if (tab == null) {
-            return;
-        }
-        TabPane tabPane = tab.getTabPane();
-        if (tabPane != null) {
-            tabPane.getTabs().remove(tab);
-        }
-        if (pane != null) {
-            pane.visibleForUpdatesProperty().unbind();
-            boolean guarded = pane.applyCloseGuard();
-            pane.dispose();
-            if (guarded) {
-                Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.guard"));
-            }
-        }
-        tab = null;
-        pane = null;
-        logger.info("Removed Class visibility tab");
         syncToolbarState();
     }
 
-    private void raiseUndockedWindow() {
+    private void updateSurfaceToggleForTab() {
+        if (pane == null || tab == null) {
+            return;
+        }
+        if (tab.getTabPane() == null) {
+            pane.hideSurfaceToggle();
+        } else {
+            pane.setSurfaceToggle(Strings.get("menu.undockToWindow"),
+                    Strings.get("tooltip.menu.undockToWindow"), this::undockToWindow);
+        }
+    }
+
+    /** Move the Pane out of its tab and back into a floating window. */
+    private synchronized void undockToWindow() {
+        if (!isOpen() || !isDocked()) {
+            return;
+        }
+        TabPane tabPane = tab.getTabPane();
+        if (tabPane == null) {
+            // QuPath already undocked it into a window of its own; ours would be a second one.
+            raisePaneWindow();
+            return;
+        }
+        reparenting = true;
+        try {
+            ClassVisibilityPane content = (ClassVisibilityPane) tab.getContent();
+            tab.setContent(null);
+            tab.setTooltip(null);
+            tabPane.getTabs().remove(tab);
+            tab = null;
+            pane = content;
+            attachToWindow();
+        } finally {
+            reparenting = false;
+        }
+        logger.info("Undocked the Class visibility panel into its own window");
+    }
+
+    /**
+     * Close the panel from whichever surface it is in and run the R2 guard.
+     *
+     * <p>"Show only checked classes" with an empty rule set hides every object in every image,
+     * and QuPath persists that mode while not persisting the set -- so the state comes back at
+     * the next launch with no panel open and no visible cause.</p>
+     */
+    private synchronized void closePanel() {
+        if (!isOpen()) {
+            return;
+        }
+        ClassVisibilityPane closing = pane;
+        pane = null;
+
+        if (tab != null) {
+            TabPane tabPane = tab.getTabPane();
+            tab.setContent(null);
+            tab.setTooltip(null);
+            if (tabPane != null) {
+                tabPane.getTabs().remove(tab);
+            }
+            tab = null;
+        }
+        if (window != null) {
+            reparenting = true;
+            try {
+                window.hide();
+            } finally {
+                reparenting = false;
+            }
+            window = null;
+        }
+
+        closing.visibleForUpdatesProperty().unbind();
+        boolean guarded = closing.applyCloseGuard();
+        closing.dispose();
+        if (guarded) {
+            Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.guard"));
+        }
+        syncToolbarState();
+        logger.info("Closed the Class visibility panel");
+    }
+
+    /** Raise whichever window currently holds the Pane -- ours, or QuPath's undocked tab window. */
+    private void raisePaneWindow() {
         if (pane == null || pane.getScene() == null) {
             return;
         }
-        Window window = pane.getScene().getWindow();
-        if (window instanceof Stage stage && stage != qupath.getStage()) {
+        Window paneWindow = pane.getScene().getWindow();
+        if (paneWindow instanceof Stage stage && stage != qupath.getStage()) {
             stage.toFront();
             stage.requestFocus();
         }
     }
 
+    /** @return whether the panel is currently on screen where the user can see it. */
+    private boolean isPanelVisible() {
+        if (!isOpen()) {
+            return false;
+        }
+        if (isDocked()) {
+            return tab.getTabPane() == null
+                    || (tab.isSelected() && qupath.showAnalysisPaneProperty().get());
+        }
+        return window != null && window.isShowing();
+    }
+
     private void syncToolbarState() {
         if (toolbarButton != null) {
-            toolbarButton.setSelected(tab != null);
-            toolbarButton.setTooltip(new Tooltip(tab != null
+            toolbarButton.setSelected(isOpen());
+            toolbarButton.setTooltip(new Tooltip(isOpen()
                     ? Strings.get("tooltip.toolbar.shown")
                     : Strings.get("tooltip.toolbar.hidden")));
         }
@@ -364,19 +520,18 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         button.getStyleClass().add("toolbar-button");
         button.setGraphic(buildIcon(button));
         button.setOnAction(e -> {
-            // Reveal-or-hide. The pressed state tracks "the tab exists", so the toolbar always
-            // tells the truth about whether the panel is installed -- which is the only way out,
+            // The pressed state means "the panel is open", in either surface, so the toolbar
+            // always tells the truth. Pressing it opens the panel, brings a hidden-but-open one
+            // forward, or closes a visible one -- which is the only way to close a DOCKED panel,
             // since the analysis TabPane forbids close buttons.
-            if (tab == null) {
-                revealPanel();
-            } else if (tab.getTabPane() == null) {
-                raiseUndockedWindow();
-                syncToolbarState();
-            } else if (tab.isSelected() && qupath.showAnalysisPaneProperty().get()) {
-                hidePanel();
+            if (!isOpen()) {
+                showPanel();
+            } else if (isPanelVisible()) {
+                closePanel();
             } else {
-                revealPanel();
+                showPanel();
             }
+            syncToolbarState();
         });
         addContextMenuDecoration(button);
         button.setOnContextMenuRequested(e -> {
@@ -393,7 +548,8 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
      * own {@code Reset all}: it restores the state the user <b>had</b>, not the state QuPath
      * ships. An automatic snapshot is taken before the panel's first change in a session, which
      * is what makes it a recovery route rather than a power-user feature -- the person who needs
-     * it did not plan ahead.</p>
+     * it did not plan ahead. Both live here rather than only in the panel because the panel may
+     * not be open, and a user whose viewer has gone blank should not have to open it first.</p>
      */
     private ContextMenu buildContextMenu() {
         ContextMenu menu = new ContextMenu();
@@ -432,9 +588,24 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             options.selectedClassesProperty().clear();
         });
 
-        CustomMenuItem show = menuItem(Strings.get("menu.show"),
-                Strings.get("tooltip.menu"), false);
-        show.setOnAction(e -> revealPanel());
+        // Whichever move is available from the current state, and neither when the panel is shut.
+        boolean canDock = isOpen() && !isDocked();
+        boolean canUndock = isOpen() && isDocked() && tab.getTabPane() != null;
+        CustomMenuItem surfaceItem = canUndock
+                ? menuItem(Strings.get("menu.undockToWindow"),
+                        Strings.get("tooltip.menu.undockToWindow"), false)
+                : menuItem(Strings.get("menu.dockAsTab"),
+                        Strings.get("tooltip.menu.dockAsTab"), !canDock);
+        surfaceItem.setOnAction(e -> {
+            if (canUndock) {
+                undockToWindow();
+            } else if (canDock) {
+                dockAsTab();
+            }
+        });
+
+        CustomMenuItem show = menuItem(Strings.get("menu.show"), Strings.get("tooltip.menu"), false);
+        show.setOnAction(e -> showPanel());
 
         CustomMenuItem help = menuItem(Strings.get("menu.help"), null, false);
         help.setOnAction(e -> showHelp());
@@ -446,6 +617,7 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
                 resetAll,
                 new SeparatorMenuItem(),
                 show,
+                surfaceItem,
                 help);
         return menu;
     }

@@ -81,6 +81,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** Below this pane width, lay out narrow (stacked). The gap is deliberate hysteresis. */
     private static final double NARROW_THRESHOLD = 580;
 
+    /** Column id of the count column in both tables, so its header can be found after a reorder. */
+    private static final String COUNT_COLUMN_ID = "countColumn";
+
     /** Below this width the component spread column is dropped; recoverable from the column menu. */
     private static final double DROP_SPREAD_COLUMN_WIDTH = 360;
 
@@ -130,7 +133,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final CheckBox includeEmptyCheck = new CheckBox(Strings.get("check.includeEmpty"));
     private final ComboBox<ClassHarvester.Scope> scopeCombo = new ComboBox<>();
     private final TextField findField = new TextField();
-    private final Button clearFindButton = new Button("x");
+    private final Button clearFindButton = new Button(Strings.get("button.findClear"));
     private final Button refreshButton = new Button(Strings.get("button.refresh"));
 
     private final Button undoButton = new Button(Strings.get("button.undo"));
@@ -329,6 +332,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         findField.setTooltip(new Tooltip(Strings.get("tooltip.find")));
         HBox.setHgrow(findField, Priority.ALWAYS);
         clearFindButton.setTooltip(new Tooltip(Strings.get("tooltip.findClear")));
+        // A one-character label is not an accessible name, and with the field already empty the
+        // button has nothing to clear -- disabled beats a click that appears to be ignored.
+        clearFindButton.setAccessibleText(Strings.get("tooltip.findClear"));
+        clearFindButton.disableProperty().bind(findField.textProperty().isEmpty());
         clearFindButton.setOnAction(e -> {
             findField.clear();
             findField.requestFocus();
@@ -407,6 +414,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         countColumn.setCellFactory(col -> new CountCell<>(ClassRow::count));
         countColumn.setComparator(Comparator.comparingLong(ClassRow::count));
+        countColumn.setId(COUNT_COLUMN_ID);
         Label countHeader = new Label(Strings.get("column.count"));
         countHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.count")));
         countColumn.setGraphic(countHeader);
@@ -486,6 +494,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         countColumn.setCellFactory(col -> new CountCell<>(ComponentRow::count));
         countColumn.setComparator(Comparator.comparingLong(ComponentRow::count));
+        countColumn.setId(COUNT_COLUMN_ID);
         Label countHeader = new Label(Strings.get("column.count"));
         countHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.count")));
         countColumn.setGraphic(countHeader);
@@ -745,7 +754,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
                 findField.requestFocus();
                 findField.selectAll();
                 event.consume();
-            } else if (undoCombo.match(event)) {
+            } else if (undoCombo.match(event) && undoSlot != null) {
                 undo();
                 event.consume();
             }
@@ -1059,10 +1068,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     }
 
     private static void setCountHeaderText(TableView<?> table, String text) {
-        List<? extends TableColumn<?, ?>> columns = table.getColumns();
-        TableColumn<?, ?> last = columns.isEmpty() ? null : columns.get(columns.size() - 1);
-        if (last != null && last.getGraphic() instanceof Label label) {
-            label.setText(text);
+        // By id, not by position: both tables let the user reorder their columns, and addressing
+        // "the last column" would eventually put "Count (stale)" over the wrong header.
+        for (TableColumn<?, ?> column : table.getColumns()) {
+            if (COUNT_COLUMN_ID.equals(column.getId()) && column.getGraphic() instanceof Label label) {
+                label.setText(text);
+                return;
+            }
         }
     }
 

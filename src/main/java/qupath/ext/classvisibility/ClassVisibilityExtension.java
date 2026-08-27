@@ -103,6 +103,9 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
 
     private ToggleButton toolbarButton;
 
+    /** The Extensions-menu entry, whose label tracks whether the panel is on screen. */
+    private MenuItem showHideMenuItem;
+
     /**
      * True while a dock or undock is in flight. Both operations hide a Stage or remove a Tab, and
      * without this the teardown handlers would read those as the user closing the panel and
@@ -158,12 +161,40 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
 
     private void registerMenuItems() {
         var menu = qupath.getMenu("Extensions>" + EXTENSION_NAME, true);
-        MenuItem showItem = new MenuItem(Strings.get("menu.show"));
-        showItem.setOnAction(e -> showPanel());
+        showHideMenuItem = new MenuItem(Strings.get("menu.show"));
+        showHideMenuItem.setOnAction(e -> toggleFromMenu());
         MenuItem helpItem = new MenuItem(Strings.get("menu.help"));
         helpItem.setOnAction(e -> showHelp());
-        menu.getItems().addAll(showItem, helpItem);
+        menu.getItems().addAll(showHideMenuItem, helpItem);
+        // The label is recomputed as the menu opens, for the same reason the toolbar tooltip is:
+        // "is the panel visible" also changes when the user selects another analysis tab or
+        // collapses the analysis pane, and neither of those runs any code of ours.
+        menu.setOnShowing(e -> syncMenuItemText());
+        syncMenuItemText();
         logger.info("Registered menu items: Extensions > {}", EXTENSION_NAME);
+    }
+
+    /** Keep the Extensions-menu item saying what it will actually do next. */
+    private void syncMenuItemText() {
+        if (showHideMenuItem != null) {
+            showHideMenuItem.setText(isPanelVisible() ? Strings.get("menu.hide") : Strings.get("menu.show"));
+        }
+    }
+
+    /**
+     * The Extensions-menu entry point, with the toolbar button's three outcomes: open a closed
+     * panel, raise an open-but-buried one, close a visible one. Before this it always called
+     * {@code showPanel()} -- so with the panel already in front the menu item said "Show panel"
+     * and moved the caret, which is the defect a user reported in the context menu, surviving in
+     * the one place it was not fixed.
+     */
+    private void toggleFromMenu() {
+        if (isOpen() && isPanelVisible()) {
+            closePanel();
+        } else {
+            showPanel();
+        }
+        syncMenuItemText();
     }
 
     /**
@@ -423,6 +454,7 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             toolbarButton.setSelected(isOpen());
             toolbarButton.setAccessibleText(toolbarTooltipText());
         }
+        syncMenuItemText();
     }
 
     /**
@@ -580,7 +612,9 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         OverlayOptions options = OverlayOptions.getSharedInstance();
         boolean hasSnapshot = VisibilityStateStore.hasSnapshot();
 
-        CustomMenuItem restore = menuItem(Strings.get("menu.restoreState"),
+        CustomMenuItem restore = menuItem(
+                hasSnapshot ? Strings.get("menu.restoreState")
+                            : Strings.get("menu.restoreState.empty"),
                 hasSnapshot ? Strings.get("tooltip.menu.restoreState")
                             : Strings.get("tooltip.menu.restoreState.empty"),
                 !hasSnapshot);

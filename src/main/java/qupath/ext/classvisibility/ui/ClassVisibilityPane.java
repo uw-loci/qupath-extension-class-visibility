@@ -1312,6 +1312,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             checkBox.setTooltip(new Tooltip(derived
                     ? Strings.get("tooltip.row.class.disabled")
                     : Strings.get("tooltip.row.class")));
+            // JavaFX shows no tooltip on a disabled node, so the explanation for a checkbox the
+            // user cannot tick has to live on the cell around it -- otherwise the one row in the
+            // list that refuses to respond is the one row with nothing to say for itself.
+            setTooltip(derived ? new Tooltip(Strings.get("tooltip.row.class.disabled")) : null);
             checkBox.setAccessibleText(Strings.format("accessible.row.class", item.displayName()));
             setGraphic(checkBox);
         }

@@ -14,7 +14,9 @@ import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.SplitPane;
@@ -25,6 +27,8 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
@@ -34,6 +38,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import org.slf4j.Logger;
@@ -44,7 +50,9 @@ import qupath.ext.classvisibility.core.ClassVisibilityController;
 import qupath.ext.classvisibility.core.VisibilityRuleModel;
 import qupath.ext.classvisibility.core.VisibilityStateStore;
 import qupath.ext.classvisibility.preferences.ClassVisibilityPreferences;
+import qupath.fx.dialogs.Dialogs;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.gui.tools.ColorToolsFX;
 import qupath.lib.gui.viewer.OverlayOptions;
 import qupath.lib.objects.classes.PathClass;
 
@@ -55,6 +63,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * The whole Class Visibility user interface, as a self-contained {@link BorderPane}.
@@ -86,6 +96,17 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
     /** Below this width the component spread column is dropped; recoverable from the column menu. */
     private static final double DROP_SPREAD_COLUMN_WIDTH = 360;
+
+    /**
+     * Below this CLASS TABLE width the Affects column is dropped; recoverable from the column
+     * menu. Driven off the table rather than the pane, because in the wide profile the table is
+     * one half of a split pane and the pane's own width says nothing about how much room the
+     * class names have left.
+     */
+    private static final double DROP_AFFECTS_COLUMN_WIDTH = 340;
+
+    /** Column id of the Affects column, so its visibility can be driven after a reorder. */
+    private static final String AFFECTS_COLUMN_ID = "affectsColumn";
 
     /** Coverage emphasis is suppressed entirely below this many classes. */
     private static final int COVERAGE_EMPHASIS_MIN_CLASSES = 5;
@@ -135,6 +156,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final TextField findField = new TextField();
     private final Button clearFindButton = new Button(Strings.get("button.findClear"));
     private final Button refreshButton = new Button(Strings.get("button.refresh"));
+    private final Button helpButton = new Button(Strings.get("button.help"));
 
     private final Button undoButton = new Button(Strings.get("button.undo"));
     private final Button resetButton = new Button(Strings.get("button.reset"));
@@ -169,6 +191,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private boolean wideProfile = true;
     private boolean profileInitialised = false;
     private boolean harvesting = false;
+    /** True only while the rows on screen belong to a different image, so no count is knowable. */
+    private boolean countsUnknown = false;
     private boolean countsStale = false;
     private boolean updatingControls = false;
 
@@ -187,7 +211,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         ClassVisibilityPreferences.installPreferences();
         this.controller = new ClassVisibilityController(qupath, this);
         this.options = controller.getOverlayOptions();
-        this.model = new VisibilityRuleModel(options::selectedClassesProperty);
+        this.model = new VisibilityRuleModel(options::selectedClassesProperty,
+                showSelectedOnly -> options.setSelectedClassVisibilityMode(showSelectedOnly
+                        ? OverlayOptions.ClassVisibilityMode.SHOW_SELECTED
+                        : OverlayOptions.ClassVisibilityMode.HIDE_SELECTED));
         this.model.setChangeListener(this::onModelChanged);
         this.model.setCombination(ClassVisibilityPreferences.combinationProperty().get());
 
@@ -302,7 +329,12 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         HBox.setHgrow(imageLabel, Priority.ALWAYS);
         surfaceButton.setVisible(false);
         surfaceButton.setManaged(false);
-        imageRow.getChildren().setAll(imageLabel, surfaceButton);
+        // Help is on the Extensions menu and the toolbar button's context menu, neither of which
+        // is reachable from a docked panel without leaving it (finding N4).
+        helpButton.setTooltip(new Tooltip(Strings.get("tooltip.button.help")));
+        helpButton.setAccessibleText(Strings.get("tooltip.button.help"));
+        helpButton.setOnAction(e -> showHelpDialog());
+        imageRow.getChildren().setAll(imageLabel, helpButton, surfaceButton);
         imageRow.setAlignment(Pos.CENTER_LEFT);
 
         ToggleGroup modeGroup = new ToggleGroup();
@@ -392,17 +424,19 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         checkColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         checkColumn.setCellFactory(col -> new ClassCheckCell());
 
-        TableColumn<ClassRow, ClassRow> onlyColumn = new TableColumn<>(Strings.get("column.only"));
+        TableColumn<ClassRow, ClassRow> onlyColumn = new TableColumn<>();
         onlyColumn.setPrefWidth(52);
         onlyColumn.setMinWidth(52);
         onlyColumn.setMaxWidth(52);
         onlyColumn.setSortable(false);
         onlyColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         onlyColumn.setCellFactory(col -> new ClassOnlyCell());
+        onlyColumn.setGraphic(headerLabel(Strings.get("column.only"), Strings.get("tooltip.column.only")));
 
-        TableColumn<ClassRow, String> nameColumn = new TableColumn<>(Strings.get("column.class"));
-        nameColumn.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().displayName()));
-        nameColumn.setCellFactory(col -> new NameCell<>());
+        TableColumn<ClassRow, ClassRow> nameColumn = new TableColumn<>(Strings.get("column.class"));
+        nameColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
+        nameColumn.setCellFactory(col -> new ClassNameCell());
+        nameColumn.setComparator(Comparator.comparing(ClassRow::displayName, String.CASE_INSENSITIVE_ORDER));
         Label nameHeader = new Label(Strings.get("column.class"));
         nameHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.class")));
         nameColumn.setGraphic(nameHeader);
@@ -419,7 +453,28 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.count")));
         countColumn.setGraphic(countHeader);
 
-        classTable.getColumns().setAll(List.of(checkColumn, onlyColumn, nameColumn, countColumn));
+        // The truth about the click. The Count column answers "how many objects carry this exact
+        // class"; with "Exact matches only" off -- the shipped default -- a click on the row acts
+        // on every class containing all of this one's parts as well, which on a combinatorial
+        // panel is routinely several times the number in Count. Finding S1: a count shown beside
+        // a control that acts on a different number is the one thing a counting UI must not do.
+        TableColumn<ClassRow, ClassRow> affectsColumn = new TableColumn<>();
+        affectsColumn.setPrefWidth(84);
+        affectsColumn.setMinWidth(60);
+        affectsColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
+        affectsColumn.setCellFactory(col -> new AffectsCell());
+        affectsColumn.setComparator(Comparator.comparingLong(
+                (ClassRow row) -> affectedObjects(row.pathClass())));
+        affectsColumn.setId(AFFECTS_COLUMN_ID);
+        affectsColumn.setGraphic(headerLabel(Strings.get("column.affects"), Strings.get("tooltip.column.affects")));
+
+        classTable.getColumns().setAll(List.of(checkColumn, onlyColumn, nameColumn, countColumn,
+                affectsColumn));
+        // Dropped when the class names would otherwise have nothing left, and recoverable from
+        // the table's own column menu.
+        classTable.widthProperty().addListener((obs, oldValue, newValue) ->
+                setColumnVisible(classTable, AFFECTS_COLUMN_ID,
+                        newValue.doubleValue() >= DROP_AFFECTS_COLUMN_WIDTH));
         classTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         classTable.setTableMenuButtonVisible(true);
         classTable.setMinHeight(120);
@@ -462,17 +517,19 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         checkColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         checkColumn.setCellFactory(col -> new ComponentCheckCell());
 
-        TableColumn<ComponentRow, ComponentRow> onlyColumn = new TableColumn<>(Strings.get("column.only"));
+        TableColumn<ComponentRow, ComponentRow> onlyColumn = new TableColumn<>();
         onlyColumn.setPrefWidth(52);
         onlyColumn.setMinWidth(52);
         onlyColumn.setMaxWidth(52);
         onlyColumn.setSortable(false);
         onlyColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         onlyColumn.setCellFactory(col -> new ComponentOnlyCell());
+        onlyColumn.setGraphic(headerLabel(Strings.get("column.only"), Strings.get("tooltip.column.only")));
 
-        TableColumn<ComponentRow, String> nameColumn = new TableColumn<>();
-        nameColumn.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().name()));
-        nameColumn.setCellFactory(col -> new NameCell<>());
+        TableColumn<ComponentRow, ComponentRow> nameColumn = new TableColumn<>();
+        nameColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
+        nameColumn.setCellFactory(col -> new ComponentNameCell());
+        nameColumn.setComparator(Comparator.comparing(ComponentRow::name, String.CASE_INSENSITIVE_ORDER));
         Label nameHeader = new Label(Strings.get("column.component"));
         nameHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.component")));
         nameColumn.setGraphic(nameHeader);
@@ -508,10 +565,14 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         SortedList<ComponentRow> sorted = new SortedList<>(filteredComponents);
         sorted.comparatorProperty().bind(componentTable.comparatorProperty());
         componentTable.setItems(sorted);
-        // Default sort: discriminating power first. Count-descending would sort the degenerate,
-        // near-universal component to row one, which is exactly the trap the column exists for.
-        spreadColumn.setSortType(TableColumn.SortType.ASCENDING);
-        componentTable.getSortOrder().add(spreadColumn);
+        // Default sort: alphabetical by component name. Spread-ascending was the first choice --
+        // discriminating power first -- but at the design centre every real marker sits in the
+        // middle of the spread distribution, so ascending order ranks them arbitrarily and only
+        // reliably promotes one-offs and typos. The bold spread ratio already warns about a
+        // degenerate component at the point of the click, which is where that warning belongs;
+        // the default sort is better spent on the other job, looking a marker up (finding S12).
+        nameColumn.setSortType(TableColumn.SortType.ASCENDING);
+        componentTable.getSortOrder().add(nameColumn);
 
         ToggleGroup combinationGroup = new ToggleGroup();
         anyRadio.setToggleGroup(combinationGroup);
@@ -557,6 +618,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         ruleTable.setItems(ruleRows);
         ruleTable.setPrefHeight(140);
         ruleTable.setPlaceholder(new Label(Strings.get("placeholder.rules.empty")));
+        // The rules table is the reproducibility surface: it is the only place that states, for
+        // the record, what is hiding things -- including rules for classes absent from this image.
+        // Rules are deliberately not persisted, so without this the only way out was retyping it
+        // off the screen (finding S11).
+        MenuItem copyItem = new MenuItem(Strings.get("menu.rules.copy"));
+        copyItem.setOnAction(e -> copyRulesToClipboard());
+        ruleTable.setContextMenu(new ContextMenu(copyItem));
+        KeyCombination copyCombo = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
+        ruleTable.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (copyCombo.match(event)) {
+                copyRulesToClipboard();
+                event.consume();
+            }
+        });
 
         clearRulesButton.setTooltip(new Tooltip(Strings.get("tooltip.button.clearAllRules")));
         HBox rulesTop = new HBox(6, clearRulesButton);
@@ -586,12 +661,64 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             wideProfile = true;
             applyProfileLayout();
         }
-        boolean showSpread = width >= DROP_SPREAD_COLUMN_WIDTH;
-        for (TableColumn<ComponentRow, ?> column : componentTable.getColumns()) {
-            if ("spreadColumn".equals(column.getId())) {
-                column.setVisible(showSpread);
+        setColumnVisible(componentTable, "spreadColumn", width >= DROP_SPREAD_COLUMN_WIDTH);
+    }
+
+    private static void setColumnVisible(TableView<?> table, String id, boolean visible) {
+        for (TableColumn<?, ?> column : table.getColumns()) {
+            if (id.equals(column.getId())) {
+                column.setVisible(visible);
+                return;
             }
         }
+    }
+
+    /**
+     * A column header that can carry a tooltip. A {@code TableColumn}'s own text cannot, so every
+     * header a user might hover for an explanation has to be a {@code Label} graphic instead.
+     *
+     * @param text the header text
+     * @param tooltipText the hover explanation
+     * @return the header node
+     */
+    private static Label headerLabel(String text, String tooltipText) {
+        Label label = new Label(text);
+        Tooltip tooltip = new Tooltip(tooltipText);
+        tooltip.setWrapText(true);
+        tooltip.setMaxWidth(340);
+        label.setTooltip(tooltip);
+        return label;
+    }
+
+    /**
+     * @param pathClass a class, or null for Unclassified
+     * @return how many objects a rule for that class would hide or show, under the matching mode
+     *         in force right now
+     */
+    private long affectedObjects(PathClass pathClass) {
+        return census.matchedObjectsForClass(pathClass, options.getUseExactSelectedClasses());
+    }
+
+    /** Put every active rule on the clipboard, one per line, with its source and status. */
+    private void copyRulesToClipboard() {
+        if (ruleRows.isEmpty()) {
+            return;
+        }
+        String text = ruleRows.stream()
+                .map(row -> row.rule() + "\t" + row.source() + "\t" + row.status())
+                .collect(Collectors.joining(System.lineSeparator()));
+        ClipboardContent content = new ClipboardContent();
+        content.putString(text);
+        Clipboard.getSystemClipboard().setContent(content);
+        logger.info("Copied {} class visibility rule(s) to the clipboard", ruleRows.size());
+    }
+
+    /**
+     * Show the panel's help text. One implementation, called from the panel's own {@code ?}
+     * button, the Extensions menu and the toolbar button's context menu.
+     */
+    public static void showHelpDialog() {
+        Dialogs.showMessageDialog(Strings.get("help.title"), Strings.get("help.body"));
     }
 
     private void applyProfileLayout() {
@@ -747,15 +874,17 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     }
 
     private void wireKeyboard() {
+        // Ctrl+Z is deliberately NOT bound here. QuPath binds shortcut+Z to Edit > Undo as a
+        // scene accelerator, so the same keystroke meant two different things depending on state
+        // the user cannot see: with our slot armed it undid a visibility change and swallowed the
+        // key, and with it empty the key bubbled to QuPath and reverted the last HIERARCHY action
+        // -- object data changing under a panel that advertises itself as never touching object
+        // data. Undo stays a labelled button that names the action it will undo (findings S3, m8).
         KeyCombination find = new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN);
-        KeyCombination undoCombo = new KeyCodeCombination(KeyCode.Z, KeyCombination.SHORTCUT_DOWN);
         addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (find.match(event)) {
                 findField.requestFocus();
                 findField.selectAll();
-                event.consume();
-            } else if (undoCombo.match(event) && undoSlot != null) {
-                undo();
                 event.consume();
             }
         });
@@ -852,13 +981,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     }
 
     private void toggleClass(ClassRow row, boolean selected) {
-        beforeMutation();
+        // Single-row toggles push undo as well as bulk actions. They did not before, which made
+        // the slot say "Undo Check all listed" long after fifteen individual corrections had been
+        // made on top of it -- and undoing then silently discarded all fifteen (finding S3).
+        pushUndo(selected
+                ? Strings.format("action.check", row.displayName())
+                : Strings.format("action.uncheck", row.displayName()));
         soloedClass = null;
         model.setClassSelected(row.pathClass(), selected);
     }
 
     private void toggleComponent(ComponentRow row, boolean selected) {
-        beforeMutation();
+        pushUndo(selected
+                ? Strings.format("action.check", row.name())
+                : Strings.format("action.uncheck", row.name()));
         soloedComponent = null;
         model.setComponentSelected(row.name(), selected);
         if (selected) {
@@ -875,8 +1011,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         pushUndo(Strings.format("action.showOnly", row.displayName()));
         soloedComponent = null;
         soloedClass = row.pathClass();
+        // One call. The mode flip used to live here, which meant the model half alone hid exactly
+        // the class it was asked to isolate (finding L1); it is now inside soloClass.
         model.soloClass(row.pathClass());
-        options.setSelectedClassVisibilityMode(OverlayOptions.ClassVisibilityMode.SHOW_SELECTED);
     }
 
     private void soloComponent(ComponentRow row) {
@@ -888,7 +1025,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         soloedClass = null;
         soloedComponent = row.name();
         model.soloComponent(row.name());
-        options.setSelectedClassVisibilityMode(OverlayOptions.ClassVisibilityMode.SHOW_SELECTED);
     }
 
     /**
@@ -926,6 +1062,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     public void onCensus(ClassCensus newCensus) {
         this.census = newCensus;
         harvesting = false;
+        countsUnknown = false;
         countsStale = false;
         classTable.setDisable(false);
         componentTable.setDisable(false);
@@ -940,15 +1077,23 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         harvesting = true;
         if (imageChanged) {
             // Rows on screen belong to the previous image: leave them in place so the panel does
-            // not flash blank, but disable them so nothing can be acted on by mistake.
+            // not flash blank, but disable them so nothing can be acted on by mistake. Their
+            // counts are not merely stale, they are unknowable, so the cells read "--".
+            countsUnknown = true;
             classTable.setDisable(true);
             componentTable.setDisable(true);
         } else {
+            // Same image, new count: the numbers on screen are still meaningful, so they stay
+            // and the header says they are old. countsStale had no rendered effect at all before
+            // Phase 5, because this method never called updateHeaders (finding S4).
             countsStale = true;
         }
         spinner.setVisible(true);
         spinner.setManaged(true);
         updateStatus();
+        updateHeaders();
+        classTable.refresh();
+        componentTable.refresh();
     }
 
     @Override
@@ -1045,20 +1190,24 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         int componentTotal = componentRows.size();
         int componentShown = filteredComponents.size();
         boolean filtered = !findField.getText().isEmpty();
+        // The list scope is named in the header, not only in the combo box and a hover tooltip.
+        // The misreading this control invites -- "List: Annotations means only annotations are
+        // hidden" -- is a confident one, and a confident user does not hover (finding S2).
+        String scopeNoun = controller.getScope().lowerCaseNoun();
         if (wideProfile) {
             classHeader.setText(filtered
-                    ? Strings.format("header.classes.wide.filtered", classShown, classTotal)
-                    : Strings.format("header.classes.wide", classTotal));
+                    ? Strings.format("header.classes.wide.filtered", scopeNoun, classShown, classTotal)
+                    : Strings.format("header.classes.wide", scopeNoun, classTotal));
             componentHeader.setText(filtered
-                    ? Strings.format("header.components.wide.filtered", componentShown, componentTotal)
-                    : Strings.format("header.components.wide", componentTotal));
+                    ? Strings.format("header.components.wide.filtered", scopeNoun, componentShown, componentTotal)
+                    : Strings.format("header.components.wide", scopeNoun, componentTotal));
         } else {
             classHeader.setText(filtered
-                    ? Strings.format("header.classes.narrow.filtered", classShown, classTotal)
-                    : Strings.format("header.classes.narrow", classTotal));
+                    ? Strings.format("header.classes.narrow.filtered", scopeNoun, classShown, classTotal)
+                    : Strings.format("header.classes.narrow", scopeNoun, classTotal));
             componentHeader.setText(filtered
-                    ? Strings.format("header.components.narrow.filtered", componentShown, componentTotal)
-                    : Strings.format("header.components.narrow", componentTotal));
+                    ? Strings.format("header.components.narrow.filtered", scopeNoun, componentShown, componentTotal)
+                    : Strings.format("header.components.narrow", scopeNoun, componentTotal));
         }
         String countHeaderText = countsStale || !autoRefreshCheck.isSelected()
                 ? Strings.get("column.count.stale")
@@ -1153,7 +1302,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         boolean disabled = n < 2;
         anyRadio.setDisable(disabled);
         allRadio.setDisable(disabled);
-        combinationLabel.setDisable(disabled);
+        // JavaFX shows no tooltip on a disabled node, so tooltip.combination.disabled could never
+        // be read. At one checked component -- a first-timer's most natural first action -- the
+        // radio labels read "Any -- CD8" / "All -- CD8", greyed, with nothing anywhere stating
+        // the two-or-more rule (finding m1). The label is not disabled-only text; it is the rule.
+        combinationLabel.setText(disabled
+                ? Strings.get("label.combination.disabled")
+                : Strings.get("label.combination"));
         Tooltip disabledTip = new Tooltip(Strings.get("tooltip.combination.disabled"));
         if (disabled) {
             anyRadio.setTooltip(disabledTip);
@@ -1170,19 +1325,27 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         List<RuleRow> rows = new ArrayList<>();
         Set<PathClass> present = new LinkedHashSet<>(census.classes());
         for (PathClass entry : model.activeRules()) {
-            String name = displayName(entry);
-            String source = switch (model.sourceOf(entry)) {
+            VisibilityRuleModel.RuleSource ruleSource = model.sourceOf(entry);
+            // An All composite is not a class. Rendering it as one -- "CD45: CD8", built in
+            // alphabetical order rather than the project's naming order -- put a class name in
+            // the one table that states the truth about what is in force, for a class that exists
+            // nowhere in the user's data (finding S9). The sorted build stays; only the label
+            // changes.
+            String name = ruleSource == VisibilityRuleModel.RuleSource.COMPONENTS_ALL && entry != null
+                    ? Strings.format("rules.name.composite", String.join(" + ", new TreeSet<>(entry.toSet())))
+                    : displayName(entry);
+            String source = switch (ruleSource) {
                 case CLASS -> Strings.get("rules.source.class");
                 case COMPONENTS_ANY -> Strings.get("rules.source.componentsAny");
                 case COMPONENTS_ALL -> Strings.get("rules.source.componentsAll");
                 case ELSEWHERE -> Strings.get("rules.source.elsewhere");
             };
             String status;
-            if (exactCheck.isSelected() && model.sourceOf(entry) != VisibilityRuleModel.RuleSource.CLASS) {
+            if (exactCheck.isSelected() && ruleSource != VisibilityRuleModel.RuleSource.CLASS) {
                 status = Strings.get("rules.status.exactOnly");
             } else if (present.contains(entry == null ? PathClass.NULL_CLASS : entry)) {
                 status = Strings.get("rules.status.listed");
-            } else if (model.sourceOf(entry) == VisibilityRuleModel.RuleSource.COMPONENTS_ALL) {
+            } else if (ruleSource == VisibilityRuleModel.RuleSource.COMPONENTS_ALL) {
                 status = Strings.get("rules.status.composite");
             } else {
                 status = Strings.get("rules.status.notInImage");
@@ -1227,8 +1390,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             text = count == 1 ? Strings.get("status.s8.one") : Strings.format("status.s8.many", count);
             buttons.add(resetButton);
         } else if (showOnly && count == 1 && (soloedClass != null || soloedComponent != null)) {
-            String name = soloedClass != null ? displayName(soloedClass) : soloedComponent;
-            text = Strings.format("status.s5", name);
+            // "Showing only X" was false whenever X had supersets in the image, which at the
+            // design centre is most of the time: a rule for "CD3: CD8" also shows
+            // "CD3: CD8: CD4: CD45". The wording follows what the rule actually reaches rather
+            // than what was clicked (finding S1).
+            if (soloedClass != null) {
+                String name = displayName(soloedClass);
+                text = affectedObjects(soloedClass) > census.countForClass(soloedClass)
+                        ? Strings.format("status.s5.class", name)
+                        : Strings.format("status.s5.only", name);
+            } else {
+                text = options.getUseExactSelectedClasses()
+                        ? Strings.format("status.s5.only", soloedComponent)
+                        : Strings.format("status.s5.component", soloedComponent);
+            }
             buttons.add(resetButton);
         } else if (showOnly) {
             text = count == 1 ? Strings.get("status.s4.one") : Strings.format("status.s4.many", count);
@@ -1400,19 +1575,112 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         }
     }
 
-    /** Ellipsis-with-tooltip name cell; the full name is always reachable. */
-    private static final class NameCell<S> extends TableCell<S, String> {
+    /**
+     * Class name cell: colour swatch, ellipsis-with-tooltip name, bold while soloed.
+     *
+     * <p>The swatch is the channel that connects a row to what is on screen. At thirty
+     * combinatorial names -- the condition this panel was built for -- the names are
+     * near-identical strings and colour is the only thing that distinguishes a population at a
+     * glance; QuPath's own class list has it, and the README concedes the point (finding S6). It
+     * is read-only: {@code PathClass} colours are interned, global and persisted with the
+     * project, so nothing here ever writes one.</p>
+     */
+    private final class ClassNameCell extends TableCell<ClassRow, ClassRow> {
+
+        private final Rectangle swatch = new Rectangle(10, 10);
+
+        private ClassNameCell() {
+            swatch.setArcWidth(2);
+            swatch.setArcHeight(2);
+            // A thin outline so a class coloured close to the background is still a visible chip
+            // in both QuPath themes.
+            swatch.setStroke(Color.gray(0.5, 0.6));
+            swatch.setStrokeWidth(0.75);
+        }
 
         @Override
-        protected void updateItem(String item, boolean empty) {
+        protected void updateItem(ClassRow item, boolean empty) {
             super.updateItem(item, empty);
             if (empty || item == null) {
                 setText(null);
                 setTooltip(null);
+                setGraphic(null);
+                setFont(Font.getDefault());
                 return;
             }
-            setText(item);
-            setTooltip(new Tooltip(item));
+            setText(item.displayName());
+            setTooltip(new Tooltip(item.displayName()));
+            PathClass pathClass = item.pathClass();
+            if (pathClass == null || pathClass == PathClass.NULL_CLASS || pathClass.getColor() == null) {
+                setGraphic(null);
+            } else {
+                swatch.setFill(ColorToolsFX.getPathClassColor(pathClass));
+                setGraphic(swatch);
+            }
+            setFont(soloFont(soloedClass != null && soloedClass == pathClass));
+        }
+    }
+
+    /** Ellipsis-with-tooltip component name cell, bold while soloed. */
+    private final class ComponentNameCell extends TableCell<ComponentRow, ComponentRow> {
+
+        @Override
+        protected void updateItem(ComponentRow item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setTooltip(null);
+                setFont(Font.getDefault());
+                return;
+            }
+            setText(item.name());
+            setTooltip(new Tooltip(item.name()));
+            setFont(soloFont(item.name().equals(soloedComponent)));
+        }
+    }
+
+    /**
+     * @param solo whether this row is the soloed one
+     * @return the font for it. The soloed row is named in the status strip and by the Undo
+     *         button, but nothing marked the row itself, so a user who solos twice in a row could
+     *         not see which row was in force (deviation 3.8, finding N13).
+     */
+    private static Font soloFont(boolean solo) {
+        return solo
+                ? Font.font(Font.getDefault().getFamily(), FontWeight.BOLD, Font.getDefault().getSize())
+                : Font.getDefault();
+    }
+
+    /**
+     * The Affects cell: how many objects a click on this row would act on, right now. Bold when
+     * that is more than the row's own Count, which is the case the Count column alone misreports.
+     */
+    private final class AffectsCell extends TableCell<ClassRow, ClassRow> {
+
+        private AffectsCell() {
+            setStyle("-fx-alignment: CENTER-RIGHT;");
+        }
+
+        @Override
+        protected void updateItem(ClassRow item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setTooltip(null);
+                setFont(Font.getDefault());
+                return;
+            }
+            if (countsUnknown) {
+                setText("--");
+                setFont(Font.getDefault());
+                return;
+            }
+            long affects = affectedObjects(item.pathClass());
+            setText(COUNTS.format(affects));
+            boolean reachesMore = affects > item.count();
+            setFont(reachesMore
+                    ? Font.font(Font.getDefault().getFamily(), FontWeight.BOLD, Font.getDefault().getSize())
+                    : Font.getDefault());
         }
     }
 
@@ -1433,7 +1701,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
                 setText(null);
                 return;
             }
-            setText(harvesting ? "--" : COUNTS.format(extractor.applyAsLong(item)));
+            setText(countsUnknown ? "--" : COUNTS.format(extractor.applyAsLong(item)));
         }
     }
 

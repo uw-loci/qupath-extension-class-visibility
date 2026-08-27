@@ -3,6 +3,7 @@ package qupath.ext.classvisibility;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
+import javafx.collections.SetChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -47,6 +48,7 @@ import qupath.lib.gui.actions.CommonActions;
 import qupath.lib.gui.extensions.GitHubProject;
 import qupath.lib.gui.extensions.QuPathExtension;
 import qupath.lib.gui.viewer.OverlayOptions;
+import qupath.lib.objects.classes.PathClass;
 
 /**
  * QuPath extension entry point for the Class Visibility panel.
@@ -74,7 +76,8 @@ import qupath.lib.gui.viewer.OverlayOptions;
  * <p>The analysis {@code TabPane}'s closing policy is {@code UNAVAILABLE} and must not be
  * changed -- doing so would make QuPath's own five tabs closable as a side effect of installing
  * this extension. A docked panel is therefore closed from the toolbar toggle, whose pressed state
- * tracks whether the panel is open at all.</p>
+ * reports whether <b>rules are in force</b> -- not whether the panel happens to be open, which is
+ * the fact that stops mattering the moment the panel is closed.</p>
  */
 public class ClassVisibilityExtension implements QuPathExtension, GitHubProject {
 
@@ -105,6 +108,9 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
 
     /** The Extensions-menu entry, whose label tracks whether the panel is on screen. */
     private MenuItem showHideMenuItem;
+
+    /** The Extensions-menu restore entry, whose label tracks whether a snapshot exists. */
+    private MenuItem restoreStateMenuItem;
 
     /**
      * True while a dock or undock is in flight. Both operations hide a Stage or remove a Tab, and
@@ -149,6 +155,7 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             try {
                 registerMenuItems();
                 installShutdownGuard();
+                installStateWatchers();
                 // Defer the toolbar lookup so QuPath finishes building its toolbar first.
                 Platform.runLater(() -> Platform.runLater(() -> tryInsertToolbarButton(0)));
             } catch (Exception ex) {
@@ -163,10 +170,25 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         var menu = qupath.getMenu("Extensions>" + EXTENSION_NAME, true);
         showHideMenuItem = new MenuItem(Strings.get("menu.show"));
         showHideMenuItem.setOnAction(e -> toggleFromMenu());
+
+        // The three recovery actions live here as well as on the toolbar button's context menu.
+        // Toolbar insertion is best effort -- a ten-attempt retry against a layout we do not own,
+        // which warns and skips if it fails -- so putting the ONLY route to a recovery control on
+        // the component most likely to be missing is the wrong dependency (finding N3). This menu
+        // is always present.
+        restoreStateMenuItem = new MenuItem(Strings.get("menu.restoreState"));
+        restoreStateMenuItem.setOnAction(e -> restoreVisibilityState());
+        MenuItem saveStateItem = new MenuItem(Strings.get("menu.saveState"));
+        saveStateItem.setOnAction(e -> saveVisibilityState());
+        MenuItem resetAllItem = new MenuItem(Strings.get("menu.resetAll"));
+        resetAllItem.setOnAction(e -> resetAllVisibility());
+
         MenuItem helpItem = new MenuItem(Strings.get("menu.help"));
         helpItem.setOnAction(e -> showHelp());
-        menu.getItems().addAll(showHideMenuItem, helpItem);
-        // The label is recomputed as the menu opens, for the same reason the toolbar tooltip is:
+        menu.getItems().addAll(showHideMenuItem, new SeparatorMenuItem(),
+                restoreStateMenuItem, saveStateItem, resetAllItem,
+                new SeparatorMenuItem(), helpItem);
+        // The labels are recomputed as the menu opens, for the same reason the toolbar tooltip is:
         // "is the panel visible" also changes when the user selects another analysis tab or
         // collapses the analysis pane, and neither of those runs any code of ours.
         menu.setOnShowing(e -> syncMenuItemText());
@@ -174,11 +196,58 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         logger.info("Registered menu items: Extensions > {}", EXTENSION_NAME);
     }
 
-    /** Keep the Extensions-menu item saying what it will actually do next. */
+    /** Keep the Extensions-menu items saying what they will actually do next. */
     private void syncMenuItemText() {
         if (showHideMenuItem != null) {
             showHideMenuItem.setText(isPanelVisible() ? Strings.get("menu.hide") : Strings.get("menu.show"));
         }
+        if (restoreStateMenuItem != null) {
+            boolean hasSnapshot = VisibilityStateStore.hasSnapshot();
+            restoreStateMenuItem.setText(hasSnapshot
+                    ? Strings.get("menu.restoreState")
+                    : Strings.get("menu.restoreState.empty"));
+            restoreStateMenuItem.setDisable(!hasSnapshot);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // The three recovery actions, shared by the Extensions menu and the toolbar context menu
+    // ------------------------------------------------------------------------------------------
+
+    /**
+     * Put every visibility setting back to the snapshot -- ours and QuPath's alike. One snapshot
+     * is taken automatically before the panel's first change in a session, which is what makes
+     * this a recovery route rather than a power-user feature.
+     */
+    private void restoreVisibilityState() {
+        if (VisibilityStateStore.restore(OverlayOptions.getSharedInstance())) {
+            Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.stateRestored"));
+        } else {
+            Dialogs.showWarningNotification(Strings.get("notify.title"), Strings.get("notify.noStateSaved"));
+        }
+    }
+
+    private void saveVisibilityState() {
+        VisibilityStateStore.save(OverlayOptions.getSharedInstance());
+        Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.stateSaved"));
+    }
+
+    /** Mirrors QuPath's own restoreClassVisibilityDefaults(): mode, exact flag and set, in order. */
+    private void resetAllVisibility() {
+        OverlayOptions options = OverlayOptions.getSharedInstance();
+        boolean wouldChange = !options.selectedClassesProperty().isEmpty()
+                || options.getUseExactSelectedClasses()
+                || options.getSelectedClassVisibilityMode()
+                        != OverlayOptions.ClassVisibilityMode.HIDE_SELECTED;
+        VisibilityStateStore.captureIfAbsent(options);
+        options.setSelectedClassVisibilityMode(OverlayOptions.ClassVisibilityMode.HIDE_SELECTED);
+        options.setUseExactSelectedClasses(false);
+        options.selectedClassesProperty().clear();
+        // Reset from an already-default state changes nothing on screen. Saying so is the
+        // difference between "this control is broken" and "there was nothing to do".
+        Dialogs.showInfoNotification(Strings.get("notify.title"), wouldChange
+                ? Strings.get("notify.resetApplied")
+                : Strings.get("notify.resetNoChange"));
     }
 
     /**
@@ -201,15 +270,37 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
      * The R2 guard at QuPath shutdown. "Show only checked classes" persists across restarts but
      * the rule set does not, so leaving that pair behind means every object in every image is
      * invisible at the next launch, with no panel open and no obvious cause.
+     *
+     * <p><b>WINDOW_CLOSE_REQUEST, as an event filter, and both halves of that matter.</b> This
+     * was registered on {@code WINDOW_HIDING} until Phase 5, where it never ran once: QuPath
+     * never hides its main stage. {@code QuPathGUI.handleCloseMainStageRequest}, installed with
+     * {@code stage.setOnCloseRequest}, runs the entire quit sequence inline and finishes with
+     * {@code Platform.exit()} and {@code System.exit(0)}, so the JVM is gone before any hide
+     * event exists (finding B1, proved with a standalone JavaFX probe). A JVM shutdown hook would
+     * be no better: that same handler calls {@code PathPrefs.savePreferences()} before exiting,
+     * so the guard has to write <i>before</i> it. A filter runs in the capturing phase, ahead of
+     * the {@code onCloseRequest} property handler -- verified by probe, not assumed.</p>
+     *
+     * <p>QuPath can still cancel the quit (unsaved viewers, a running script, the script editor),
+     * and every one of those paths consumes the event and returns <i>before</i> preferences are
+     * saved. The guard has then flipped the mode mid-session -- but only ever out of the state in
+     * which the user is looking at a completely empty viewer, so it is a rescue rather than a
+     * control moving under their hand, and the notification says what happened either way.</p>
      */
     private void installShutdownGuard() {
         Stage stage = qupath.getStage();
         if (stage == null) {
             return;
         }
-        stage.addEventHandler(WindowEvent.WINDOW_HIDING, e -> {
+        stage.addEventFilter(WindowEvent.WINDOW_CLOSE_REQUEST, e -> {
             if (ClassVisibilityPane.applyCloseGuard(OverlayOptions.getSharedInstance())) {
                 logger.info("Class visibility guard fired at shutdown");
+                try {
+                    Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.guard"));
+                } catch (RuntimeException ex) {
+                    // A notification during shutdown is a courtesy, never a reason to fail a quit.
+                    logger.debug("Could not show the shutdown guard notification: {}", ex.getMessage());
+                }
             }
         });
     }
@@ -217,6 +308,30 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     // ------------------------------------------------------------------------------------------
     // Surface state machine
     // ------------------------------------------------------------------------------------------
+
+    /**
+     * Keep the toolbar button honest about state nothing of ours drives: rules written by
+     * QuPath's own class list, and the analysis pane being collapsed or re-expanded. Without
+     * these the button's pressed state and its accessible name were recomputed only on
+     * transitions we caused, so both could sit stale indefinitely (findings C1, N12).
+     */
+    private void installStateWatchers() {
+        OverlayOptions options = OverlayOptions.getSharedInstance();
+        options.selectedClassesProperty().addListener(
+                (SetChangeListener<PathClass>) change -> onFxThread(this::syncToolbarState));
+        options.selectedClassVisibilityModeProperty().addListener(
+                (obs, oldValue, newValue) -> onFxThread(this::syncToolbarState));
+        qupath.showAnalysisPaneProperty().addListener(
+                (obs, oldValue, newValue) -> onFxThread(this::syncToolbarState));
+    }
+
+    private static void onFxThread(Runnable task) {
+        if (Platform.isFxApplicationThread()) {
+            task.run();
+        } else {
+            Platform.runLater(task);
+        }
+    }
 
     /** @return true when the panel exists in either surface. */
     private boolean isOpen() {
@@ -333,6 +448,11 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             updateSurfaceToggleForTab();
             syncToolbarState();
         });
+        // Selecting another analysis tab changes what the button will do on the next click, and
+        // therefore what its accessible name should say. Nothing of ours runs on that transition
+        // otherwise, so the accessible name could sit stale saying "close" where the tooltip --
+        // recomputed in setOnShowing -- would have said "bring to the front" (finding N12).
+        tab.selectedProperty().addListener((obs, oldValue, newValue) -> syncToolbarState());
         updateSurfaceToggleForTab();
 
         tabPane.getTabs().add(tab);
@@ -420,6 +540,16 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         closing.dispose();
         if (guarded) {
             Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.guard"));
+        } else {
+            // Rules survive the close, by design -- closing the panel to reclaim screen space
+            // while keeping a filter is legitimate, and clearing them would make the panel
+            // destructive of the user's working state. What was missing is anyone saying so.
+            int remaining = OverlayOptions.getSharedInstance().selectedClassesProperty().size();
+            if (remaining > 0) {
+                Dialogs.showInfoNotification(Strings.get("notify.title"), remaining == 1
+                        ? Strings.get("notify.rulesStillActive.one")
+                        : Strings.format("notify.rulesStillActive.many", remaining));
+            }
         }
         syncToolbarState();
         logger.info("Closed the Class visibility panel");
@@ -449,9 +579,31 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         return window != null && window.isShowing();
     }
 
+    /**
+     * @return whether anything is being hidden by class right now -- including the
+     *         "show only checked classes with nothing checked" state, which hides everything
+     *         while holding no rules at all
+     */
+    private static boolean rulesAreActive() {
+        OverlayOptions options = OverlayOptions.getSharedInstance();
+        return !options.selectedClassesProperty().isEmpty()
+                || options.getSelectedClassVisibilityMode()
+                        == OverlayOptions.ClassVisibilityMode.SHOW_SELECTED;
+    }
+
+    /**
+     * The toolbar button's pressed state means <b>rules are in force</b>, not "the panel is
+     * open".
+     *
+     * <p>Closing the panel makes every rule one the user cannot see, and until Phase 5 nothing
+     * outside the panel said so: the button went back to exactly its no-filter appearance while a
+     * view showing 37 of 40 classes stayed in force. A blank viewer announces itself; a filtered
+     * one looks entirely normal and is the one a reviewer reads as complete (finding C1). The
+     * tooltip and accessible text carry both facts, because the click still opens and closes.</p>
+     */
     private void syncToolbarState() {
         if (toolbarButton != null) {
-            toolbarButton.setSelected(isOpen());
+            toolbarButton.setSelected(rulesAreActive());
             toolbarButton.setAccessibleText(toolbarTooltipText());
         }
         syncMenuItemText();
@@ -467,14 +619,34 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
      * @return the tooltip text for the current state
      */
     private String toolbarTooltipText() {
+        String action;
         if (!isOpen()) {
-            return Strings.get("tooltip.toolbar.closed");
+            action = Strings.get("tooltip.toolbar.closed");
+        } else {
+            action = isPanelVisible()
+                    ? Strings.get("tooltip.toolbar.close")
+                    : Strings.get("tooltip.toolbar.raise");
         }
-        return isPanelVisible() ? Strings.get("tooltip.toolbar.close") : Strings.get("tooltip.toolbar.raise");
+        return action + " " + rulesSummary();
+    }
+
+    /** @return one sentence saying what is currently hidden by class, whatever the panel is doing. */
+    private static String rulesSummary() {
+        OverlayOptions options = OverlayOptions.getSharedInstance();
+        int count = options.selectedClassesProperty().size();
+        if (count == 0) {
+            return options.getSelectedClassVisibilityMode() == OverlayOptions.ClassVisibilityMode.SHOW_SELECTED
+                    ? Strings.get("tooltip.toolbar.rules.allHidden")
+                    : Strings.get("tooltip.toolbar.rules.none");
+        }
+        return count == 1
+                ? Strings.get("tooltip.toolbar.rules.one")
+                : Strings.format("tooltip.toolbar.rules.many", count);
     }
 
     private void showHelp() {
-        Dialogs.showMessageDialog(Strings.get("help.title"), Strings.get("help.body"));
+        // One implementation, shared with the panel's own "?" button.
+        ClassVisibilityPane.showHelpDialog();
     }
 
     // ------------------------------------------------------------------------------------------
@@ -609,7 +781,6 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
      */
     private ContextMenu buildContextMenu() {
         ContextMenu menu = new ContextMenu();
-        OverlayOptions options = OverlayOptions.getSharedInstance();
         boolean hasSnapshot = VisibilityStateStore.hasSnapshot();
 
         CustomMenuItem restore = menuItem(
@@ -618,42 +789,15 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
                 hasSnapshot ? Strings.get("tooltip.menu.restoreState")
                             : Strings.get("tooltip.menu.restoreState.empty"),
                 !hasSnapshot);
-        restore.setOnAction(e -> {
-            if (VisibilityStateStore.restore(options)) {
-                Dialogs.showInfoNotification(Strings.get("notify.title"),
-                        Strings.get("notify.stateRestored"));
-            } else {
-                Dialogs.showWarningNotification(Strings.get("notify.title"),
-                        Strings.get("notify.noStateSaved"));
-            }
-        });
+        restore.setOnAction(e -> restoreVisibilityState());
 
         CustomMenuItem save = menuItem(Strings.get("menu.saveState"),
                 Strings.get("tooltip.menu.saveState"), false);
-        save.setOnAction(e -> {
-            VisibilityStateStore.save(options);
-            Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.stateSaved"));
-        });
+        save.setOnAction(e -> saveVisibilityState());
 
         CustomMenuItem resetAll = menuItem(Strings.get("menu.resetAll"),
                 Strings.get("tooltip.menu.resetAll"), false);
-        resetAll.setOnAction(e -> {
-            // Mirrors QuPath's own restoreClassVisibilityDefaults(): mode, exact flag and set,
-            // all three, in that order.
-            boolean wouldChange = !options.selectedClassesProperty().isEmpty()
-                    || options.getUseExactSelectedClasses()
-                    || options.getSelectedClassVisibilityMode()
-                            != OverlayOptions.ClassVisibilityMode.HIDE_SELECTED;
-            VisibilityStateStore.captureIfAbsent(options);
-            options.setSelectedClassVisibilityMode(OverlayOptions.ClassVisibilityMode.HIDE_SELECTED);
-            options.setUseExactSelectedClasses(false);
-            options.selectedClassesProperty().clear();
-            // Reset from an already-default state changes nothing on screen. Saying so is the
-            // difference between "this control is broken" and "there was nothing to do".
-            Dialogs.showInfoNotification(Strings.get("notify.title"), wouldChange
-                    ? Strings.get("notify.resetApplied")
-                    : Strings.get("notify.resetNoChange"));
-        });
+        resetAll.setOnAction(e -> resetAllVisibility());
 
         // One dynamic item, because the menu is rebuilt on every right-click: "Show panel" when
         // the panel is closed is a real action, and when it is open it is not -- which is exactly

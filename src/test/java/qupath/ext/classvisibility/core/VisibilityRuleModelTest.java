@@ -20,6 +20,9 @@ class VisibilityRuleModelTest {
     private Set<PathClass> selected;
     private VisibilityRuleModel model;
 
+    /** What the model last asked the visibility mode to become, or null if it never asked. */
+    private Boolean showSelectedOnly;
+
     private static PathClass pc(String... tokens) {
         return PathClass.fromCollection(List.of(tokens));
     }
@@ -27,7 +30,8 @@ class VisibilityRuleModelTest {
     @BeforeEach
     void setUp() {
         selected = new LinkedHashSet<>();
-        model = new VisibilityRuleModel(() -> selected);
+        showSelectedOnly = null;
+        model = new VisibilityRuleModel(() -> selected, value -> showSelectedOnly = value);
     }
 
     // --- Exact class rules --------------------------------------------------------------------
@@ -180,6 +184,32 @@ class VisibilityRuleModelTest {
         model.setCombination(VisibilityRuleModel.Combination.ALL);
         model.soloComponent("CD8");
         assertThat(selected).containsExactly(pc("CD8"));
+    }
+
+    /**
+     * L1: solo is one operation. It used to be two, split across two layers -- the model set the
+     * rule contents and the Pane flipped the mode -- so the model half on its own hid exactly the
+     * class it had been asked to isolate.
+     */
+    @Test
+    void soloSwitchesTheModeItself() {
+        model.soloClass(pc("Tumor"));
+        assertThat(showSelectedOnly).as("solo must ask for show-only, not leave hide-checked in force")
+                .isTrue();
+    }
+
+    @Test
+    void soloingAComponentSwitchesTheModeItself() {
+        model.soloComponent("CD8");
+        assertThat(showSelectedOnly).isTrue();
+    }
+
+    @Test
+    void ordinaryRuleChangesNeverTouchTheMode() {
+        model.setClassSelected(pc("CD3"), true);
+        model.setComponentSelected("CD8", true);
+        model.clearAllRules();
+        assertThat(showSelectedOnly).as("only solo implies a mode").isNull();
     }
 
     // --- Rule provenance ----------------------------------------------------------------------

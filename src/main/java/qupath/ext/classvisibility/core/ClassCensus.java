@@ -128,6 +128,46 @@ public final class ClassCensus {
         return componentClassSpread.getOrDefault(component, 0);
     }
 
+    /**
+     * How many objects in this census a rule for one class would actually hide or show.
+     *
+     * <p>This is deliberately <b>not</b> {@link #countForClass(PathClass)}. With QuPath's default
+     * {@code useExactSelectedClasses = false}, a rule for {@code CD3: CD8} also matches
+     * {@code CD3: CD8: CD4: CD45} and every other class whose parts are a superset -- so on a
+     * highly multiplexed image the number of objects a click affects is routinely several times
+     * the number in the Count column. A panel that shows a count beside a control acting on a
+     * different number is the one thing a counting UI must not do (Phase 4, finding S1).</p>
+     *
+     * <p>The predicate mirrors {@code OverlayOptions.isPathClassHidden} exactly, including the
+     * {@code isDerivedClass()} guard on either side that stops two identical non-derived classes
+     * from taking the containment branch, and the rule that no component can ever reach
+     * Unclassified. {@code ViewerVisibilityContractTest} pins the agreement against
+     * {@code OverlayOptions.isHidden} itself rather than against this comment.</p>
+     *
+     * @param rule the class a row would add as a rule; {@code null} is treated as Unclassified
+     * @param exactMatchesOnly the current value of QuPath's {@code Exact matches only} setting
+     * @return the number of objects in scope that rule would match
+     */
+    public long matchedObjectsForClass(PathClass rule, boolean exactMatchesOnly) {
+        PathClass key = rule == null ? PathClass.NULL_CLASS : rule;
+        if (exactMatchesOnly || key == PathClass.NULL_CLASS) {
+            return countForClass(key);
+        }
+        Set<String> ruleParts = key.toSet();
+        long total = 0L;
+        for (Map.Entry<PathClass, Long> entry : classCounts.entrySet()) {
+            PathClass candidate = entry.getKey();
+            if (key.equals(candidate)) {
+                total += entry.getValue();
+            } else if (candidate != PathClass.NULL_CLASS
+                    && (candidate.isDerivedClass() || key.isDerivedClass())
+                    && candidate.toSet().containsAll(ruleParts)) {
+                total += entry.getValue();
+            }
+        }
+        return total;
+    }
+
     /** @return the number of distinct classes, Unclassified included -- the spread denominator. */
     public int classCount() {
         return classCounts.size();

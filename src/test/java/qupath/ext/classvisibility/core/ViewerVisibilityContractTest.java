@@ -12,6 +12,8 @@ import qupath.lib.objects.classes.PathClass;
 import qupath.lib.regions.ImagePlane;
 import qupath.lib.roi.ROIs;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,7 +59,10 @@ class ViewerVisibilityContractTest {
     @BeforeEach
     void setUp() {
         options = new OverlayOptions();
-        model = new VisibilityRuleModel(() -> options.selectedClassesProperty());
+        model = new VisibilityRuleModel(() -> options.selectedClassesProperty(),
+                showSelectedOnly -> options.setSelectedClassVisibilityMode(showSelectedOnly
+                        ? ClassVisibilityMode.SHOW_SELECTED
+                        : ClassVisibilityMode.HIDE_SELECTED));
     }
 
     private static PathObject objectOf(PathClass pathClass) {
@@ -204,15 +209,9 @@ class ViewerVisibilityContractTest {
     }
 
     @Test
-    @DisplayName("Solo, driven the way the UI drives it, isolates one class")
+    @DisplayName("Solo isolates one class, through one call")
     void soloIsolatesOneClass() {
-        // NOTE: solo is a TWO-PART operation split across two layers. The model sets the rule
-        // contents; ClassVisibilityPane.soloClass (:878-879) then flips the mode. Calling
-        // model.soloClass() alone leaves the default HIDE_SELECTED mode in force, which hides
-        // exactly the class the caller asked to isolate -- the precise inverse. Reproduced here
-        // so the split is documented rather than rediscovered. See Phase 5 finding L1.
         model.soloClass(CD3_CD8);
-        options.setSelectedClassVisibilityMode(ClassVisibilityMode.SHOW_SELECTED);
 
         assertThat(hidden(CD3_CD8)).as("the soloed class").isFalse();
         assertThat(hidden(CD3)).as("bare CD3 lacks CD8").isTrue();
@@ -223,16 +222,81 @@ class ViewerVisibilityContractTest {
     }
 
     @Test
-    @DisplayName("L1 regression: the model half of solo, alone, inverts the intent")
-    void soloThroughTheModelAloneInvertsTheIntent() {
-        // Locks in the hazard above. If a future caller (scripting API, an accelerator wired
-        // somewhere else) invokes the model without the mode flip, this is what they get.
+    @DisplayName("L1 regression: solo carries its own mode, so the model alone is enough")
+    void soloThroughTheModelAloneIsAtomic() {
+        // Solo was TWO operations in two layers until Phase 5: the model set the rule contents
+        // and ClassVisibilityPane flipped the mode. The model half on its own therefore hid
+        // exactly the class the caller asked to isolate -- the precise inverse -- and any future
+        // caller (a scripting API, an accelerator wired elsewhere) would have got that silently.
+        // The mode now moves with the rule, in one call. See Phase 5 finding L1.
+        assertThat(options.getSelectedClassVisibilityMode())
+                .as("starting from the default")
+                .isEqualTo(ClassVisibilityMode.HIDE_SELECTED);
+
         model.soloClass(CD3_CD8);
 
-        assertThat(hidden(CD3_CD8))
-                .as("without the Pane's mode flip, solo HIDES its target")
-                .isTrue();
-        assertThat(hidden(CD31)).as("and shows everything else").isFalse();
+        assertThat(options.getSelectedClassVisibilityMode()).isEqualTo(ClassVisibilityMode.SHOW_SELECTED);
+        assertThat(hidden(CD3_CD8)).as("the soloed class is SHOWN, not hidden").isFalse();
+        assertThat(hidden(CD31)).as("and everything else is hidden").isTrue();
+    }
+
+    @Test
+    @DisplayName("L1 regression: soloing a component is atomic too")
+    void soloingAComponentThroughTheModelAloneIsAtomic() {
+        model.soloComponent("CD8");
+
+        assertThat(hidden(CD3_CD8)).as("contains CD8").isFalse();
+        assertThat(hidden(CD3)).as("does not contain CD8").isTrue();
+    }
+
+    @Test
+    @DisplayName("S1: the Affects count is what QuPath will actually hide, not the class's own count")
+    void affectsCountAgreesWithWhatQuPathHides() {
+        // The number the panel shows beside the checkbox has to be the number of objects the
+        // click acts on. Rather than trusting the arithmetic, this drives the rule for real and
+        // sums the counts of every class OverlayOptions then hides.
+        Map<PathClass, Long> counts = new LinkedHashMap<>();
+        counts.put(CD3, 100L);
+        counts.put(CD3_CD8, 40L);
+        counts.put(CD8_CD3, 7L);
+        counts.put(CD3_CD8_CD4_CD45, 3L);
+        counts.put(CD31, 500L);
+        counts.put(CD31_CD8, 20L);
+        counts.put(PathClass.NULL_CLASS, 11L);
+        ClassCensus census = ClassCensus.of(counts);
+
+        for (boolean exact : new boolean[] {false, true}) {
+            options.setUseExactSelectedClasses(exact);
+            for (PathClass rule : counts.keySet()) {
+                options.selectedClassesProperty().clear();
+                options.selectedClassesProperty().add(rule);
+                long actuallyHidden = 0L;
+                for (Map.Entry<PathClass, Long> entry : counts.entrySet()) {
+                    PathClass pathClass = entry.getKey() == PathClass.NULL_CLASS ? null : entry.getKey();
+                    if (hidden(pathClass)) {
+                        actuallyHidden += entry.getValue();
+                    }
+                }
+                assertThat(census.matchedObjectsForClass(rule, exact))
+                        .as("rule %s, exact=%s", rule, exact)
+                        .isEqualTo(actuallyHidden);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("S1: on a combinatorial panel the Affects count is larger than Count")
+    void affectsCountExceedsTheClassOwnCountWhenSupersetsExist() {
+        Map<PathClass, Long> counts = new LinkedHashMap<>();
+        counts.put(CD3_CD8, 412L);
+        counts.put(CD3_CD8_CD4_CD45, 3120L);
+        ClassCensus census = ClassCensus.of(counts);
+
+        assertThat(census.countForClass(CD3_CD8)).isEqualTo(412L);
+        assertThat(census.matchedObjectsForClass(CD3_CD8, false)).isEqualTo(3532L);
+        assertThat(census.matchedObjectsForClass(CD3_CD8, true))
+                .as("Exact matches only narrows it back to the class itself")
+                .isEqualTo(412L);
     }
 
     @Test

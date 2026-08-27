@@ -37,6 +37,34 @@ class ClassCensusTest {
     }
 
     @Test
+    void matchedObjectsCoverEveryClassContainingAllOfTheRulesParts() {
+        // What the Affects column shows. A rule for CD3: CD8 also reaches every class whose parts
+        // are a superset of it -- which on a combinatorial panel is most of the list (finding S1).
+        ClassCensus census = ClassCensus.of(counts(
+                pc("CD3", "CD8"), 412,
+                pc("CD3", "CD8", "CD4"), 3000,
+                pc("CD8", "CD3", "PD1"), 120,
+                pc("CD3"), 900,
+                PathClass.NULL_CLASS, 50));
+
+        assertThat(census.matchedObjectsForClass(pc("CD3", "CD8"), false)).isEqualTo(412 + 3000 + 120);
+        assertThat(census.matchedObjectsForClass(pc("CD3", "CD8"), true)).isEqualTo(412);
+        assertThat(census.matchedObjectsForClass(PathClass.NULL_CLASS, false))
+                .as("no component can ever reach Unclassified")
+                .isEqualTo(50);
+    }
+
+    @Test
+    void matchedObjectsCountSupersetsOfAClassTheImageDoesNotUse() {
+        // The "Include classes with no objects here" rows: count 0, but checking one is not a
+        // no-op, because classes in the image can still contain all of its parts.
+        ClassCensus census = ClassCensus.of(counts(pc("CD3", "CD8"), 40, pc("CD31"), 5));
+
+        assertThat(census.countForClass(pc("CD8"))).isEqualTo(0);
+        assertThat(census.matchedObjectsForClass(pc("CD8"), false)).isEqualTo(40);
+    }
+
+    @Test
     void componentCountsSumOverEveryClassContainingTheComponent() {
         ClassCensus census = ClassCensus.of(counts(pc("CD3", "CD8"), 12, pc("CD8"), 5, pc("CD3"), 3));
         assertThat(census.countForComponent("CD8")).isEqualTo(17);

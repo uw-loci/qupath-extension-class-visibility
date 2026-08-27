@@ -42,6 +42,17 @@ public final class ClassVisibilityController {
      */
     private static final long DEBOUNCE_MILLIS = 300;
 
+    /**
+     * How long a debounced harvest may run before the panel admits to it.
+     *
+     * <p>Measured from the moment the walk starts, not from the request, so a harvest that
+     * finishes quickly shows nothing at all and a long one is reported after this grace period.
+     * Before Phase 5 the debounced path reported nothing ever: no spinner, no status, no stale
+     * marker -- so the counts a user reads after a classifier run were the previous run's, shown
+     * pixel-identically to fresh ones (findings N1 and S4).</p>
+     */
+    private static final long INDICATOR_GRACE_MILLIS = 150;
+
     /** Callbacks into the UI. Every one is invoked on the JavaFX application thread. */
     public interface View {
 
@@ -83,8 +94,23 @@ public final class ClassVisibilityController {
                 return t;
             });
 
+    /**
+     * A second thread purely for the "this is taking a while" timer. It cannot share the harvest
+     * executor: that one is single-threaded, so a timer queued behind a running harvest would
+     * only fire once the harvest it was timing had already finished.
+     */
+    private final ScheduledExecutorService indicator =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "class-visibility-indicator");
+                t.setDaemon(true);
+                return t;
+            });
+
     /** Bumped on every harvest request, so a superseded result can be dropped on arrival. */
     private final AtomicLong generation = new AtomicLong();
+
+    /** The last generation whose census reached the view. Read and written on the FX thread. */
+    private final AtomicLong delivered = new AtomicLong();
 
     private ScheduledFuture<?> pending;
 
@@ -100,11 +126,23 @@ public final class ClassVisibilityController {
     private boolean dirty = true;
     private boolean installed = false;
 
+    /**
+     * Hierarchy events arrive on the calling thread, which for a classifier run is a background
+     * thread ({@code PathObjectHierarchy.fireEvent} does not marshal). Everything downstream of
+     * {@code markDirty} touches JavaFX properties and this class's own unsynchronized fields, so
+     * the hop to the FX thread happens here -- the same guard QuPath's own
+     * {@code PathObjectHierarchyView} applies, and the one the sibling selected-classes listener
+     * already had (finding S10).
+     */
     private final PathObjectHierarchyListener hierarchyListener = event -> {
         if (event.isChanging()) {
             return;
         }
-        markDirty();
+        if (Platform.isFxApplicationThread()) {
+            markDirty();
+        } else {
+            Platform.runLater(this::markDirty);
+        }
     };
 
     private final ChangeListener<ImageData<BufferedImage>> imageListener =
@@ -180,6 +218,7 @@ public final class ClassVisibilityController {
             pending = null;
         }
         harvester.shutdownNow();
+        indicator.shutdownNow();
     }
 
     /**
@@ -239,11 +278,19 @@ public final class ClassVisibilityController {
         PathObjectHierarchy hierarchy = currentHierarchy();
         String imageName = currentImageName();
         ClassHarvester.Scope harvestScope = scope;
-        if (imageChanged || delayMillis == 0) {
+        boolean announceImmediately = imageChanged || delayMillis == 0;
+        if (announceImmediately) {
             view.onHarvestStarted(imageName, imageChanged);
         }
         try {
             pending = harvester.schedule(() -> {
+                if (!announceImmediately) {
+                    // The walk starts now. Arm the "still counting" indicator so that a harvest
+                    // which outlasts the grace period says so, and one that does not stays
+                    // invisible -- the deferral is what makes it safe to report the debounced
+                    // path at all.
+                    armIndicator(gen, imageName);
+                }
                 ClassCensus census;
                 try {
                     census = ClassHarvester.harvest(hierarchy, harvestScope);
@@ -255,6 +302,7 @@ public final class ClassVisibilityController {
                 Platform.runLater(() -> {
                     // Drop a result that a later request has already superseded.
                     if (gen == generation.get()) {
+                        delivered.set(gen);
                         view.onCensus(result);
                     }
                 });
@@ -262,6 +310,28 @@ public final class ClassVisibilityController {
         } catch (java.util.concurrent.RejectedExecutionException ex) {
             // The panel was disposed between the request and the schedule; nothing to do.
             logger.debug("Harvest rejected after shutdown");
+        }
+    }
+
+    /**
+     * Report a debounced harvest that has outlasted the grace period.
+     *
+     * <p>No cancellation is needed. Both the guard and the census delivery run on the FX thread,
+     * so a late indicator for a generation that has already been delivered -- or superseded --
+     * simply does nothing.</p>
+     *
+     * @param gen the generation being harvested
+     * @param imageName the image being counted
+     */
+    private void armIndicator(long gen, String imageName) {
+        try {
+            indicator.schedule(() -> Platform.runLater(() -> {
+                if (gen == generation.get() && gen > delivered.get()) {
+                    view.onHarvestStarted(imageName, false);
+                }
+            }), INDICATOR_GRACE_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException ex) {
+            logger.debug("Harvest indicator rejected after shutdown");
         }
     }
 

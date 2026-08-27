@@ -34,9 +34,10 @@ import java.util.TreeSet;
  *       clear, so touching fewer entries is a correctness rule and an efficiency rule at once.</li>
  * </ol>
  *
- * <p>JavaFX-free by design. The only contact with the outside world is
- * {@link SelectedClassSet}, a single-method view of the live set, so unit tests supply a plain
- * {@link LinkedHashSet} and no {@code OverlayOptions} is required.</p>
+ * <p>JavaFX-free by design. The only contact with the outside world is two single-method
+ * interfaces -- {@link SelectedClassSet}, a view of the live set, and {@link VisibilityModeSwitch},
+ * the show-only / hide-checked mode -- so unit tests supply a plain {@link LinkedHashSet} and a
+ * lambda, and no {@code OverlayOptions} is required.</p>
  */
 public final class VisibilityRuleModel {
 
@@ -49,6 +50,23 @@ public final class VisibilityRuleModel {
     public interface SelectedClassSet {
         /** @return the live, mutable set of selected classes. */
         Set<PathClass> selectedClasses();
+    }
+
+    /**
+     * The mode half of the rule state: whether checked classes are the ones hidden, or the only
+     * ones shown.
+     *
+     * <p>Solo needs it. Setting the rule contents without also switching to "show only checked
+     * classes" hides <b>exactly the class the caller asked to isolate</b> -- the precise inverse
+     * of solo -- so the two halves cannot live in different layers (Phase 5 finding L1).</p>
+     */
+    @FunctionalInterface
+    public interface VisibilityModeSwitch {
+        /**
+         * @param showSelectedOnly true for "show only checked classes", false for
+         *                         "hide checked classes"
+         */
+        void setShowSelectedOnly(boolean showSelectedOnly);
     }
 
     /** How two or more checked components combine into rules. */
@@ -88,6 +106,9 @@ public final class VisibilityRuleModel {
 
     private final SelectedClassSet target;
 
+    /** The mode half, so solo is one operation rather than two in two layers. */
+    private final VisibilityModeSwitch modeSwitch;
+
     /** Classes checked in the class list. Written back as-is (harvested instances). */
     private final Set<PathClass> exactSelections = new LinkedHashSet<>();
 
@@ -109,9 +130,13 @@ public final class VisibilityRuleModel {
 
     /**
      * @param target the live selected-class set to reconcile against
+     * @param modeSwitch the visibility mode to drive when an operation implies one. There is
+     *                   deliberately no single-argument constructor: a model built without it
+     *                   would make {@link #soloClass(PathClass)} do the opposite of what it says.
      */
-    public VisibilityRuleModel(SelectedClassSet target) {
+    public VisibilityRuleModel(SelectedClassSet target, VisibilityModeSwitch modeSwitch) {
         this.target = target;
+        this.modeSwitch = modeSwitch;
     }
 
     /**
@@ -244,8 +269,10 @@ public final class VisibilityRuleModel {
     }
 
     /**
-     * Leave exactly one class as the only rule. The mode change that makes this "show only" is
-     * the caller's job -- this model owns the set, not the mode.
+     * Leave exactly one class as the only rule, and switch to "show only checked classes".
+     *
+     * <p>Both halves, here, together. The set write and the mode write happen inside one FX
+     * event, so the viewer cannot repaint between them and no frame shows the inverse.</p>
      *
      * @param pathClass the class to isolate
      */
@@ -256,11 +283,13 @@ public final class VisibilityRuleModel {
         exactSelections.add(key);
         dropEverythingNotDesired();
         apply();
+        modeSwitch.setShowSelectedOnly(true);
     }
 
     /**
-     * Leave exactly one component as the only rule. One component is one entry under either
-     * combination, so {@code Any} / {@code All} is irrelevant here.
+     * Leave exactly one component as the only rule, and switch to "show only checked classes".
+     * One component is one entry under either combination, so {@code Any} / {@code All} is
+     * irrelevant here.
      *
      * @param component the component to isolate
      */
@@ -273,6 +302,7 @@ public final class VisibilityRuleModel {
         componentSelections.add(component);
         dropEverythingNotDesired();
         apply();
+        modeSwitch.setShowSelectedOnly(true);
     }
 
     /**

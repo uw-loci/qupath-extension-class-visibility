@@ -39,14 +39,26 @@ class SourceDisciplineTest {
      */
     private static final List<String> FORBIDDEN_CALLS = List.of(
             ".setPathClass(",
+            "::setPathClass",
             "resetDetectionClassifications",
             "setColor(",
+            "::setColor",
             "setPathClasses(",
+            "setClassification(",
+            "::setClassification",
             "getAvailablePathClasses().add",
             "getAvailablePathClasses().setAll",
             "getAvailablePathClasses().remove",
             "getAvailablePathClasses().clear",
             "getMeasurementList(",
+            ".setLocked(",
+            ".addObject(",
+            ".removeObject(",
+            ".addObjects(",
+            ".removeObjects(",
+            "clearAll(",
+            "syncChanges(",
+            "saveImageData(",
             "qupath.lib.gui.dialogs.Dialogs");
 
     private static List<Path> javaSources() throws IOException {
@@ -121,6 +133,33 @@ class SourceDisciplineTest {
                 .isSubsetOf(declared);
         assertThat(declared).as("strings declared but never shown to anyone")
                 .isSubsetOf(referenced);
+    }
+
+    /**
+     * The restart guard has to be registered on the event QuPath actually fires.
+     *
+     * <p>It was on {@code WINDOW_HIDING} through Phase 4, where it never ran once: QuPath's
+     * {@code handleCloseMainStageRequest} runs the whole quit sequence inline from
+     * {@code setOnCloseRequest} and finishes with {@code System.exit(0)}, so nothing ever hides
+     * the main stage. It must also be a FILTER, not a handler, and on
+     * {@code WINDOW_CLOSE_REQUEST}, because the same handler calls
+     * {@code PathPrefs.savePreferences()} -- the guard has to have written before that runs
+     * (finding B1). None of this is expressible as a behaviour test without a JavaFX toolkit and
+     * a real QuPath stage, so it is pinned here, where a refactor that moves it back cannot pass
+     * quietly.</p>
+     */
+    @Test
+    void theRestartGuardIsAFilterOnTheCloseRequest() throws IOException {
+        Path extension = MAIN_SOURCES.resolve(Path.of("qupath", "ext", "classvisibility",
+                "ClassVisibilityExtension.java"));
+        String text = Files.readString(extension, StandardCharsets.UTF_8);
+        assertThat(text)
+                .as("the guard must run in the capturing phase, ahead of QuPath's own "
+                        + "onCloseRequest handler")
+                .contains("stage.addEventFilter(WindowEvent.WINDOW_CLOSE_REQUEST");
+        assertThat(text)
+                .as("WINDOW_HIDING never fires for QuPath's main stage")
+                .doesNotContain("WindowEvent.WINDOW_HIDING");
     }
 
     @Test

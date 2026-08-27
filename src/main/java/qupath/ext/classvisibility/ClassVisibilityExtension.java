@@ -79,9 +79,14 @@ import qupath.lib.objects.classes.PathClass;
  *
  * <p>The analysis {@code TabPane}'s closing policy is {@code UNAVAILABLE} and must not be
  * changed -- doing so would make QuPath's own five tabs closable as a side effect of installing
- * this extension. A docked panel is therefore closed from the toolbar toggle, whose pressed state
- * reports whether <b>rules are in force</b> -- not whether the panel happens to be open, which is
- * the fact that stops mattering the moment the panel is closed.</p>
+ * this extension. A docked panel is therefore closed from the toolbar toggle.</p>
+ *
+ * <p><b>The toolbar button carries two independent facts on two channels.</b> Its pressed state
+ * means what a toggle button conventionally means -- the thing it toggles, the panel, is open.
+ * Its <b>icon</b> reports whether class rules are in force: open eye, or slashed eye. Those are
+ * different questions, and the one that still matters after the panel is closed is the second.
+ * Putting both on the pressed state would have said one thing twice and left the other unsaid
+ * outside the tooltip, which is what {@link EyeIcon} exists to fix (finding C1).</p>
  */
 public class ClassVisibilityExtension implements QuPathExtension, GitHubProject {
 
@@ -319,8 +324,8 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     /**
      * Keep the toolbar button honest about state nothing of ours drives: rules written by
      * QuPath's own class list, and the analysis pane being collapsed or re-expanded. Without
-     * these the button's pressed state and its accessible name were recomputed only on
-     * transitions we caused, so both could sit stale indefinitely (findings C1, N12).
+     * these the eye icon and the accessible name were recomputed only on transitions we caused,
+     * so both could sit stale indefinitely (findings C1, N12).
      */
     private void installStateWatchers() {
         OverlayOptions options = OverlayOptions.getSharedInstance();
@@ -589,7 +594,7 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     /**
      * @return whether anything is being hidden by class right now -- including the
      *         "show only checked classes with nothing checked" state, which hides everything
-     *         while holding no rules at all
+     *         while holding no rules at all. Drives the eye icon's slash.
      */
     private static boolean rulesAreActive() {
         OverlayOptions options = OverlayOptions.getSharedInstance();
@@ -599,25 +604,26 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     }
 
     /**
-     * The toolbar button's pressed state means <b>rules are in force</b>, not "the panel is
-     * open".
+     * Keep both of the toolbar button's channels current: the pressed state says whether the
+     * panel is open, the icon says whether rules are in force.
      *
      * <p>Closing the panel makes every rule one the user cannot see, and until Phase 5 nothing
      * outside the panel said so: the button went back to exactly its no-filter appearance while a
      * view showing 37 of 40 classes stayed in force. A blank viewer announces itself; a filtered
      * one looks entirely normal and is the one a reviewer reads as complete (finding C1). The
-     * tooltip and accessible text carry both facts, because the click still opens and closes.</p>
+     * <b>icon</b> is what answers that now -- a slashed eye survives the panel closing, and it
+     * leaves the pressed state free to go on meaning what a toggle button's pressed state
+     * conventionally means. The tooltip and accessible text state both facts in words.</p>
      */
     private void syncToolbarState() {
         if (toolbarButton != null) {
-            boolean active = rulesAreActive();
-            toolbarButton.setSelected(active);
+            toolbarButton.setSelected(isOpen());
             // The accessible text carries the same fact the slashed eye carries, because state
             // shown only in colour and only in a glyph is state a screen-reader user cannot read.
             // toolbarTooltipText() ends in the rules sentence, so this is covered by construction.
             toolbarButton.setAccessibleText(toolbarTooltipText());
             if (toolbarIcon != null) {
-                toolbarIcon.setRulesActive(active);
+                toolbarIcon.setRulesActive(rulesAreActive());
             }
         }
         syncMenuItemText();
@@ -957,6 +963,10 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
      * used to leave every rule standing with nothing on screen saying so. The iris also switches
      * to a warning tone while rules are active -- but the slash, not the colour, is what carries
      * the meaning, and the button's accessible text and tooltip state it in words as well.</p>
+     *
+     * <p>It is also what lets the button's pressed state go on meaning "the panel is open". The
+     * two facts are independent -- rules outlive the panel -- so they get one channel each rather
+     * than both crowding onto the pressed state and leaving the panel's own state unsaid.</p>
      */
     private static final class EyeIcon extends Group {
 

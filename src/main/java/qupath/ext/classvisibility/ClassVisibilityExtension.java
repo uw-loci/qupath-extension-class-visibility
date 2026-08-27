@@ -6,6 +6,7 @@ import javafx.beans.binding.BooleanBinding;
 import javafx.collections.SetChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.ContextMenu;
@@ -18,14 +19,17 @@ import javafx.scene.control.TabPane;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToolBar;
 import javafx.scene.control.Tooltip;
-import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
+import javafx.scene.shape.Circle;
 import javafx.scene.shape.ClosePath;
+import javafx.scene.shape.Line;
 import javafx.scene.shape.LineTo;
 import javafx.scene.shape.MoveTo;
 import javafx.scene.shape.Path;
-import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.QuadCurveTo;
+import javafx.scene.shape.StrokeLineCap;
+import javafx.scene.shape.StrokeLineJoin;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.stage.WindowEvent;
@@ -105,6 +109,9 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     private Tab tab;
 
     private ToggleButton toolbarButton;
+
+    /** The toolbar button's eye icon, whose open / slashed state follows the rules. */
+    private EyeIcon toolbarIcon;
 
     /** The Extensions-menu entry, whose label tracks whether the panel is on screen. */
     private MenuItem showHideMenuItem;
@@ -603,8 +610,15 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
      */
     private void syncToolbarState() {
         if (toolbarButton != null) {
-            toolbarButton.setSelected(rulesAreActive());
+            boolean active = rulesAreActive();
+            toolbarButton.setSelected(active);
+            // The accessible text carries the same fact the slashed eye carries, because state
+            // shown only in colour and only in a glyph is state a screen-reader user cannot read.
+            // toolbarTooltipText() ends in the rules sentence, so this is covered by construction.
             toolbarButton.setAccessibleText(toolbarTooltipText());
+            if (toolbarIcon != null) {
+                toolbarIcon.setRulesActive(active);
+            }
         }
         syncMenuItemText();
     }
@@ -746,7 +760,8 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         button.setTooltip(tip);
         button.setAccessibleText(Strings.get("tooltip.toolbar.closed"));
         button.getStyleClass().add("toolbar-button");
-        button.setGraphic(buildIcon(button));
+        toolbarIcon = new EyeIcon(button);
+        button.setGraphic(toolbarIcon);
         button.setOnAction(e -> {
             // The pressed state means "the panel is open", in either surface, so the toolbar
             // always tells the truth. Pressing it opens the panel, brings a hidden-but-open one
@@ -920,35 +935,107 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     }
 
     /**
-     * Toolbar icon: three stacked bars, the top one drawn hollow, evoking a list of classes with
-     * one hidden. Vector-only -- no font and no image asset -- so it stays crisp at any display
-     * scale, and its fill follows the button's theme-driven text fill so it needs no palette of
-     * ours in either QuPath theme.
+     * Toolbar icon: an eye, open or slashed, drawn from shapes.
+     *
+     * <p><b>Why an eye, and why not the glyph.</b> QuPath's own class list marks visibility with
+     * FontAwesome {@code EYE} / {@code EYE_SLASH} at 14px ({@code PathClassPane.java:791-797}), so
+     * the vocabulary is already learned. The glyph itself is single-coloured, and a single colour
+     * has to choose between reading well on a near-white toolbar and reading well on a near-black
+     * one. This is built from shapes so that the parts that must follow the theme can, and the
+     * parts that must NOT follow it do not.</p>
+     *
+     * <p><b>Which parts do which.</b> The almond outline and the slash stroke follow
+     * {@code button.getTextFill()}, exactly as the previous icon did -- that is what makes the
+     * icon sit correctly in either theme and in the toolbar's own hover and pressed states. The
+     * iris, pupil and catchlight are FIXED colours: a saturated mid-tone blue holds contrast
+     * against both a near-white and a near-black background, which no theme-following colour can
+     * do without maintaining two palettes. The sclera is deliberately near-transparent rather
+     * than white, because a white sclera vanishes on a light toolbar.</p>
+     *
+     * <p><b>Open eye versus slashed eye is not decoration.</b> It reports whether class rules are
+     * in force, which is the visible half of the Clinical persona's C1 finding: closing the panel
+     * used to leave every rule standing with nothing on screen saying so. The iris also switches
+     * to a warning tone while rules are active -- but the slash, not the colour, is what carries
+     * the meaning, and the button's accessible text and tooltip state it in words as well.</p>
      */
-    private static Node buildIcon(ToggleButton button) {
-        VBox stack = new VBox(2.2);
-        stack.setAlignment(Pos.CENTER);
-        stack.setMouseTransparent(true);
-        Rectangle[] bars = new Rectangle[3];
-        for (int i = 0; i < bars.length; i++) {
-            Rectangle bar = new Rectangle(14.5, 3.6);
-            bar.setArcWidth(2.6);
-            bar.setArcHeight(2.6);
-            bar.setMouseTransparent(true);
-            bars[i] = bar;
-            stack.getChildren().add(bar);
+    private static final class EyeIcon extends Group {
+
+        /** Saturated mid-tone: legible on a near-white and a near-black toolbar alike. */
+        private static final Color IRIS_CALM = Color.web("#2E86C1");
+
+        /** Warning tone, shown with the slash -- never as the only signal. */
+        private static final Color IRIS_ACTIVE = Color.web("#E67E22");
+
+        private static final Color PUPIL_COLOR = Color.web("#17202A");
+
+        private final Circle iris = new Circle(8, 8, 3.4, IRIS_CALM);
+        private final Path almond;
+        private final Line slashHalo;
+        private final Line slash;
+        private final Group slashGroup;
+
+        private EyeIcon(ToggleButton button) {
+            almond = new Path(
+                    new MoveTo(1, 8),
+                    new QuadCurveTo(8, 2.5, 15, 8),
+                    new QuadCurveTo(8, 13.5, 1, 8),
+                    new ClosePath());
+            almond.setStrokeWidth(1.3);
+            almond.setStrokeLineJoin(StrokeLineJoin.ROUND);
+            almond.setFill(Color.web("#FFFFFF", 0.10));
+
+            Circle pupil = new Circle(8, 8, 1.7, PUPIL_COLOR);
+            // Small, and load-bearing: without it the pupil reads as a dark blob on a dark theme.
+            Circle catchlight = new Circle(6.9, 6.9, 0.7, Color.WHITE);
+
+            // Two strokes, not one: the halo is drawn in the toolbar's own background tone so the
+            // slash stays legible where it crosses the iris, which is the one place a single
+            // stroke disappears.
+            slashHalo = new Line(2.5, 13.5, 13.5, 2.5);
+            slashHalo.setStrokeWidth(3.0);
+            slashHalo.setStrokeLineCap(StrokeLineCap.ROUND);
+            slash = new Line(2.5, 13.5, 13.5, 2.5);
+            slash.setStrokeWidth(1.4);
+            slash.setStrokeLineCap(StrokeLineCap.ROUND);
+            slashGroup = new Group(slashHalo, slash);
+            slashGroup.setVisible(false);
+            slashGroup.setManaged(false);
+
+            getChildren().addAll(almond, iris, pupil, catchlight, slashGroup);
+            setMouseTransparent(true);
+            for (Node child : getChildren()) {
+                child.setMouseTransparent(true);
+            }
+
+            applyPalette(button);
+            button.textFillProperty().addListener((obs, oldFill, newFill) -> applyPalette(button));
         }
-        Runnable applyPalette = () -> {
+
+        /**
+         * Follow the button's text fill for the theme-dependent strokes.
+         *
+         * @param button the button whose text fill drives the palette
+         */
+        private void applyPalette(ToggleButton button) {
             Paint fill = button.getTextFill();
             Color color = fill instanceof Color c ? c : Color.GRAY;
-            bars[0].setFill(Color.TRANSPARENT);
-            bars[0].setStroke(color);
-            bars[0].setStrokeWidth(1.0);
-            bars[1].setFill(color);
-            bars[2].setFill(color);
-        };
-        applyPalette.run();
-        button.textFillProperty().addListener((obs, oldFill, newFill) -> applyPalette.run());
-        return stack;
+            almond.setStroke(color);
+            slash.setStroke(color);
+            // The background is not readable from here, but it is the other end of the contrast
+            // that produced this text fill: a bright text fill means a dark toolbar.
+            slashHalo.setStroke(color.getBrightness() > 0.5
+                    ? Color.web("#17202A", 0.85)
+                    : Color.web("#FFFFFF", 0.85));
+        }
+
+        /**
+         * @param active whether class rules are in force. Slashed eye and warning iris when they
+         *               are, open eye and calm iris when they are not -- mirroring QuPath's own
+         *               EYE / EYE_SLASH pair.
+         */
+        private void setRulesActive(boolean active) {
+            slashGroup.setVisible(active);
+            iris.setFill(active ? IRIS_ACTIVE : IRIS_CALM);
+        }
     }
 }

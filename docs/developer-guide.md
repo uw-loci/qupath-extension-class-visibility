@@ -82,7 +82,13 @@ return matched ? showByDefault : !showByDefault
 - `containsSelectedClass` (`:661`) is set containment over `PathClass.toSet()`
   (`PathClass.java:404`), order-independent, per its own javadoc: *"hiding 'CD3' will hide
   'CD3', 'CD3: CD8', 'CD8: CD3'"*. It is **not** a substring match, which is the bug the old
-  Groovy script had.
+  Groovy script had. Note it runs in **both** directions and is not restricted to
+  single-name selections: a selected `CD3: CD8` matches `CD3: CD8: PD1` and every other
+  superset. That is why the classes list is not exact by default, and why the user guide
+  documents [what a checked class row acts on](user-guide.md#what-a-checked-class-row-acts-on)
+  with its own worked table rather than saying "exactly this class". (`containsSelectedClass`
+  only runs its containment test when one of the two classes is derived, so it never widens a
+  single-name-against-single-name comparison that `isSelectedClass` has already decided.)
 - The set is evaluated as an **OR over its elements**; each element requires *all* of its own
   parts to be present. That is the entire mechanism behind `Any` and `All`:
   - **`Any`** -- N checked components become N entries, each a single-name `PathClass`.
@@ -114,8 +120,24 @@ restart"* -- but the mode was included in the persistent list anyway.
 
 **Do not "fix" this by persisting `selectedClasses` in the extension.** That would make this
 panel the only thing in QuPath capable of hiding objects across a restart, which widens the
-failure rather than narrowing it. The panel's mitigations are the status strip, the guard at
-close/shutdown, and the snapshot/restore route.
+failure rather than narrowing it. The mitigations are the status strip, the toolbar button's
+rules tooltip, the guard at panel close **and at quit**, and the snapshot/restore route.
+
+**Do not move the shutdown guard off `WINDOW_CLOSE_REQUEST`, and do not make it an event
+handler.** It was on `WINDOW_HIDING` until Phase 5, where it never ran once. QuPath 0.7 never
+hides its main stage: `QuPathGUI.handleCloseMainStageRequest` is installed with
+`stage.setOnCloseRequest`, runs the whole quit sequence inline -- including
+`PathPrefs.savePreferences()` -- and then calls `Platform.exit()` and `System.exit(0)` from
+inside that handler, so the JVM is gone before any hide event exists. A JVM shutdown hook is
+no better: preferences are already written by then. `WINDOW_CLOSE_REQUEST` does fire, and a
+**filter** runs in the capturing phase, ahead of the `onCloseRequest` property handler -- both
+facts verified with a standalone JavaFX probe rather than reasoned about (finding B1).
+
+The residual: QuPath can consume that event and cancel the quit (unsaved viewers, a running
+script, the script editor), so the guard has then flipped the mode mid-session. Accepted,
+because the only state it moves the user out of is the completely empty viewer -- a rescue,
+not a control moving under their hand -- and the notification fires either way. Anything added
+to that path inherits the same constraint.
 
 Related dead code worth knowing about so nobody trusts it:
 `getAllPathClassesVisible()` (`:545`) returns `selectedClasses.isEmpty()`, i.e. it claims
@@ -154,20 +176,26 @@ Two consequences for any change to the extension:
 
 ## Architecture
 
-> **[Stub -- Phase 2]** The surface classes changed late in design -- the panel is
-> **window-first with optional docking**, not a tab that undocks. This table is the Phase 1
-> consolidation and the surface rows will be corrected against the shipped code. See
-> `agent-reports/extension-team/class-visibility-panel/02_design.md` for the version this
-> was taken from, and treat the shipped source as authoritative where they disagree.
+**The panel is window-first with optional docking**, not a tab that undocks. That distinction
+is the whole reason the surface is split the way it is: `ClassVisibilityPane` is a
+self-contained `BorderPane` that does not know which surface it is in, so docking and
+undocking are a re-parenting of one live instance rather than a rebuild. Nothing is
+serialised across the move, which is why nothing is lost across it.
+
+The three surface states are `CLOSED`, `FLOATING` and `DOCKED`, and the state machine lives
+in `ClassVisibilityExtension`. `ClassVisibilityStage` owns window geometry, minimum sizes, the
+multi-monitor clamp and `WINDOW_HIDDEN` teardown; the Pane owns none of it and is told what
+its dock/undock button should say via `setSurfaceToggle` / `hideSurfaceToggle`.
 
 | Class | Package | Role |
 |---|---|---|
-| `ClassVisibilityExtension` | `qupath.ext.classvisibility` | `QuPathExtension`; the `installed` re-entry guard; the toolbar button and its context menu; the menu item |
+| `ClassVisibilityExtension` | `qupath.ext.classvisibility` | `QuPathExtension`; the `installed` re-entry guard; the CLOSED / FLOATING / DOCKED state machine; the toolbar button, its `EyeIcon` and its context menu; the Extensions menu; the shutdown guard |
+| `ClassVisibilityStage` | `.ui` | The floating window: geometry persistence, minimum sizes, the clamp onto an existing screen, `Modality.NONE` owned by the main stage, `WINDOW_HIDDEN` teardown |
 | `ClassVisibilityPane` | `.ui` | The entire UI. A `BorderPane`, responsive across a wide and a narrow profile. Owns no window geometry |
 | `ClassVisibilityController` | `.core` | Lifecycle: listener install/uninstall, image-follow, update gating, debounce |
-| `ClassCensus` | `.core` | Immutable harvest result. Class -> count, component -> (count, class spread). `null` and `PathClass.NULL_CLASS` folded to one `Unclassified` key |
+| `ClassCensus` | `.core` | Immutable harvest result. Class -> count, component -> (count, class spread), plus `matchedObjectsForClass` behind the `Affects` column. `null` and `PathClass.NULL_CLASS` folded to one `Unclassified` key |
 | `ClassHarvester` | `.core` | Off-FX-thread walk via `PathObject.getClassifications()`. Pure, JavaFX-free, unit-testable |
-| `VisibilityRuleModel` | `.core` | Exact selections plus the component rule -> minimal delta against `selectedClasses`. Re-entrancy guard. Snapshot/restore. Pure, JavaFX-free, unit-testable |
+| `VisibilityRuleModel` | `.core` | Exact selections plus the component rule -> minimal delta against `selectedClasses`, **and the mode** where an operation implies one (solo). Two single-method interfaces to the outside -- `SelectedClassSet` and `VisibilityModeSwitch` -- so tests supply a `LinkedHashSet` and a lambda. Re-entrancy guard. Snapshot/restore. Pure, JavaFX-free, unit-testable |
 | `VisibilitySnapshot` | `.core` | An immutable capture of the whole `OverlayOptions` visibility surface (see below) |
 | `VisibilityStateStore` | `.core` | Holds the one saved snapshot, and takes the automatic one before the panel's first mutation in a session |
 | `ClassRow` / `ComponentRow` / `RuleRow` | `.ui` | Row view models for the three tables |
@@ -190,32 +218,59 @@ already been got wrong once somewhere.
 2. **A whole delta goes in one FX event**, so repaints coalesce.
 3. **Never hand-roll a `PathClass`.** Use the harvested instance, `PathClass.getInstance` or
    `PathClass.fromCollection`, so interning holds.
-4. **Spread is over classes, not objects.** The component list's `Classes` column counts how
+4. **Spread is over classes, not objects.** The component list's `Spread` column counts how
    many distinct classes contain the component. Deriving it from object counts is wrong, and
-   it is what puts a degenerate component like `positive` back at the top of the list.
-5. **The status strip counts set entries, not rows.** A rule with no visible row is still a
+   it is what stops a degenerate component like `positive` reading as one.
+5. **A count shown beside a control must be the count that control acts on, or be joined by
+   one that is.** The class list ships two columns for this reason: `Count` (objects carrying
+   exactly this class) and `Affects` (objects a click would move, right now, under the current
+   `Exact matches only` setting). `ClassCensus.matchedObjectsForClass` mirrors
+   `OverlayOptions.isPathClassHidden` including its `isDerivedClass()` guard; if that
+   predicate ever drifts from QuPath's, `Affects` becomes a confident lie, which is worse than
+   the single-column state it replaced (finding S1).
+6. **The status strip counts set entries, not rows.** A rule with no visible row is still a
    rule.
-6. **Scope `All objects` must not use the `synchronized` hierarchy accessors**
+7. **Scope `All objects` must not use the `synchronized` hierarchy accessors**
    (`getAllObjects(boolean)`, `getFlattenedObjectList(...)`) -- they contend with a running
    classifier for the length of a million-object walk.
-7. **Nothing captures `imageData`, `hierarchy` or `server` at construction.** Listeners come
+8. **Nothing captures `imageData`, `hierarchy` or `server` at construction.** Listeners come
    off in `dispose()`.
-8. **`QuPathGUI.getAvailablePathClasses()` is read-only for us.** QuPath syncs it back into
+9. **`QuPathGUI.getAvailablePathClasses()` is read-only for us.** QuPath syncs it back into
    the project (`QuPathGUI.java:602-611`), so writing it would mutate the user's project class
    list -- which is exactly what "Populate from image" does and what this panel promises not
    to do.
-9. **No control calls any setter on a `PathObject`, on the project class list, or
+10. **No control calls any setter on a `PathObject`, on the project class list, or
    `resetDetectionClassifications()`.** Worth a grep test in CI.
-10. **"Base class" appears in no shipped string.** `PathClass.getBaseClass()` means something
+11. **"Base class" appears in no shipped string.** `PathClass.getBaseClass()` means something
     else entirely (the outermost ancestor), and base-class *matching* semantics were
     explicitly refused upstream. The shipped word is **component**, in labels, tooltips,
     status text and notifications alike.
-11. **Any string pointing a user at QuPath's own recovery names the More options button
-    beside the show/hide dropdown, positionally.** `PathClassPane` has three such buttons
-    (`:165`, `:223`, `:257`); "the More menu" is ambiguous three ways, and this string exists
-    to rescue someone whose viewer is already blank.
-12. **The near-universal component signal reports; it never advises.** No shipped string
+12. **Any string pointing a user at QuPath's own recovery names the class list in the
+    Annotations tab, and the More options button beside the show/hide dropdown,
+    positionally.** There is no "Classes pane" in QuPath 0.7 -- the tab is `Annotations`
+    (`qupath-gui-strings.properties:84`) and the titled pane inside it is `Class list`
+    (`PathClassPane.java:131`) -- and `PathClassPane` has three More buttons (`:165`, `:223`,
+    `:257`), so "the More menu" is ambiguous three ways. These strings exist to rescue someone
+    whose viewer is already blank; a landmark they cannot find is worse than no landmark.
+13. **The near-universal component signal reports; it never advises.** No shipped string
     about spread may contain a verb of advice. Ratios only.
+14. **The toolbar button carries two facts on two channels, and they must not be merged.**
+    `EyeIcon`'s open/slashed state reads `rulesAreActive()` -- a non-empty rule set **or**
+    `SHOW_SELECTED` at all, so the empty "show only" state that hides everything without any
+    rule slashes the eye too; the button's pressed state reads `isOpen()`. Note the resulting
+    equivalence, worth preserving: the eye is open exactly when the status strip would show
+    `status.s1`. Putting rules on the pressed state as well was tried and reverted: the pressed
+    state vanishes when the panel closes, which is exactly the moment C1 is about, and a
+    toggle button whose pressed state does not mean "this thing is open" is its own defect.
+    **The slash carries the rules meaning; the warning-toned iris is a second channel and
+    never the only one**, and the tooltip and accessible text state both facts in words so
+    nothing is glyph- or colour-only.
+15. **Solo is one operation, not two.** `VisibilityRuleModel.soloClass` / `soloComponent` set
+    the rule contents *and* switch the mode, inside one FX event. Splitting them across layers
+    -- the model owning the set, the Pane owning the mode -- leaves a caller who uses only the
+    model half hiding **exactly the class it asked to isolate**, and lets a repaint land
+    between the two writes showing the inverse for a frame. There is deliberately no
+    `VisibilityRuleModel` constructor without a `VisibilityModeSwitch` (finding L1).
 
 ### The snapshot
 
@@ -250,9 +305,13 @@ A wrapper API around that would add a maintenance surface and a second thing to 
 with QuPath, for no capability a user does not already have. The panel is a UI over an API
 that is already public and already scriptable.
 
-If a scripting entry point is ever added, it belongs in a `*Scripts.java` following the
-InstanSeg pattern, and the user guide grows an "Advanced" section -- which is deliberately
-absent rather than shipped empty.
+The **user guide** carries the working snippet, under
+[Doing this from a script](user-guide.md#doing-this-from-a-script), because that is the first
+question a scripting user asks and the developer guide is not the book they open. Keep the
+two copies in step, or delete this one and link.
+
+If a scripting entry point is ever added anyway, it belongs in a `*Scripts.java` following the
+InstanSeg pattern.
 
 </details>
 
@@ -268,6 +327,15 @@ absent rather than shipped empty.
 - **`qupath.fx.dialogs.Dialogs` only.** `qupath.lib.gui.dialogs.Dialogs` is deprecated.
 - **Tests stay JavaFX-free.** The three core classes are pure by design; keep them that way
   rather than adding a JavaFX toolkit initializer to the test suite.
+- **`SourceDisciplineTest` is a lint, not a proof.** It greps the main sources for a list of
+  object-mutating call texts (`setPathClass(`, `resetDetectionClassifications(` and the rest)
+  and fails the build on a hit. It catches the accident, which is the point and the right
+  cost. It cannot catch a method reference, a reflective call, or a mutating method nobody
+  put on the list. Do not describe it, in a README or anywhere else, as a guarantee about
+  behaviour; it is a guarantee that nobody adds one of those calls without noticing.
+- **Where a contribution goes.** Issues and pull requests belong on this repository's
+  tracker; the README's *Reporting a problem* section is the user-facing version of the same
+  thing. If the repository has moved, fix both.
 - **Singular and plural are separate complete format strings.** No
   `n + " rule" + (n == 1 ? "" : "s")`. Integers via `NumberFormat.getIntegerInstance()`.
 - **Docs and strings move together.** Every user-visible string lives in

@@ -25,39 +25,60 @@ There is no small edit that fixes this; the mechanism it was written against is 
 
 QuPath 0.7 absorbed most of what the script did. This extension is aimed squarely at highly
 multiplexed data -- twenty or thirty derived classes -- and if that is not your situation you
-very likely do not need it. Before installing anything, look at the class list on the
-right-hand side of the **Annotations** tab. It already gives you:
+very likely do not need it.
 
-- **per-class show and hide**, by clicking the eye icon on each row;
-- a **"Show by default" / "Hide by default"** dropdown at the top -- the same mode this
-  extension uses;
-- **"Show/hide exact class matches only"**, under the **More options** button (the ellipsis
-  button immediately to the right of that dropdown), which switches between matching a whole
-  class and matching any class containing it;
-- **"Reset selected classes"** and **"Restore class visibility to default settings"** in that
-  same menu.
+Before installing anything, work through
+[Do you need this?](../README.md#do-you-need-this) in the README. It names where QuPath's own
+class list is, everything it now does for you, and the point past which this panel starts
+earning its screen space. If per-class show and hide is all you were using the script for,
+you are done there -- you do not need this extension.
 
-The matching rule is QuPath's now, and it is a good one: selecting `CD3` matches `CD3`,
-`CD3: CD8` and `CD8: CD3`, but not `CD31`. If per-class show/hide is all you were using the
-script for, you are done -- you do not need this extension.
+The one thing to note on the way past, because it is the change most likely to alter a result
+you previously got: **the matching rule is QuPath's now**, and it is a good one. Selecting
+`CD3` matches `CD3`, `CD3: CD8` and `CD8: CD3`, but never `CD31`.
 
-What the built-in pane does not give you, and what this extension adds:
+What this extension adds on top, all of it a consequence of working at twenty to forty
+combinatorial classes:
 
-- a **column of components**, so you can act on `CD3` without hunting through every class
-  that contains it;
+- a **list of components**, so you can act on `CD3` without hunting through every class that
+  contains it;
 - **combining several components with `All`** -- "only the cells that are CD3 *and* CD4" --
   which no interface in QuPath currently exposes, although the underlying engine supports it;
 - the classes **actually present in the current image, with counts**, rather than the
   project's list of available classes. (The only built-in way to reconcile the two is
   "Populate from image", which *changes* your project's class list. This panel never does.)
-- a search field and a list that stays usable at 30 classes.
+- a `Find` field that filters the **component** list, which the built-in pane has no
+  equivalent of. Over class names its own filter is the better one -- it accepts regular
+  expressions and this panel's does not.
 
 ---
 
 ## What changed in the behaviour you were used to
 
-Several things the script did were bugs rather than features. If you built habits around
-them, these are the ones you will notice.
+One thing is simply different, and you will hit it in the first ten seconds. The rest were
+bugs rather than features; if you built habits around them, these are the ones you will
+notice.
+
+### A ticked box means the opposite of what it meant in the script
+
+**In the script, ticking a box SHOWED that class. Here, by default, ticking a box HIDES it.**
+
+The script's first act on opening was to add every class to the hidden list, so its
+checkboxes were un-hide toggles: you started from a blank image and ticked your way back to
+what you wanted. This panel opens without changing anything, so a tick has to mean the
+opposite -- you start from everything visible and tick your way down.
+
+If you want the script's polarity, it is one radio button: **`Show only checked classes`**.
+That is the mode where a tick means show, everything else is hidden, and the panel starts
+from blank exactly as the script did. The two radios are labelled as full sentences precisely
+so this is a choice you can see rather than a convention you have to remember.
+
+One caution if you adopt that mode as a habit, and it is the failure this extension is most
+careful about: the mode is saved across a QuPath restart while your ticks are not, so leaving
+QuPath in `Show only checked classes` and quitting means the next launch starts with
+everything hidden and nothing on screen to say why. See
+[If everything disappears](user-guide.md#if-everything-disappears), which covers both how to
+get out of it and how to avoid it.
 
 ### The script crashed if any object was unclassified
 
@@ -133,7 +154,7 @@ equivalent, and nothing in it changes object data of any kind.
 - **The panel no longer hides everything the moment it opens.** The script's first act was
   to add every class to the hidden list, so opening it blanked your image until you checked
   something. This panel opens without changing anything, and the status strip tells you so:
-  `[OK] No rules active -- every object is visible.`
+  `[OK] No class rules active -- nothing is hidden by class.`
 - **You can get back.** Between `Reset all` in the panel and `Restore visibility state...`
   on the toolbar button's menu, there is always a way out of a state where you cannot see
   anything -- including states the panel did not cause. See

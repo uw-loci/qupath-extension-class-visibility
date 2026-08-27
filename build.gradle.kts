@@ -51,11 +51,15 @@ tasks.withType<JavaCompile> {
 
 tasks.test {
     useJUnitPlatform()
-    // The unit tests cover ClassHarvester, ClassCensus and VisibilityRuleModel,
-    // which are deliberately JavaFX-free (qupath-core types only). JavaFX
-    // classes are on the test classpath via testImplementation, but the tests
-    // never initialize the JavaFX toolkit. If a future test exercises JavaFX
-    // directly, add:
+    // Most tests (ClassHarvester, ClassCensus, VisibilityRuleModel) are
+    // deliberately JavaFX-free -- qupath-core types only. ViewerVisibilityContractTest
+    // is the exception: it constructs a real OverlayOptions to assert on
+    // isHidden(PathObject), the predicate the painter consults. That touches
+    // javafx.base observable collections and properties, but it does NOT start the
+    // JavaFX toolkit, which is why it runs here with JavaFX on the plain classpath.
+    // Do not add --add-modules on the strength of that: these are classpath jars,
+    // not modules, and the flag would fail to resolve them. If a future test needs
+    // a real toolkit (Stage, Scene, Platform.startup), add:
     //   "--add-modules", "javafx.base,javafx.graphics,javafx.controls",
     //   "--add-opens", "javafx.graphics/javafx.stage=ALL-UNNAMED"
     // and configure the openjfx Gradle plugin so the modules land on the

@@ -205,6 +205,15 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         return controller.paneVisibleProperty();
     }
 
+    /**
+     * Put the caret in the {@code Find} field. At the design centre of 20-40 combinatorial class
+     * names that field is the primary navigation control, not a convenience, so it takes focus
+     * when the panel is first revealed.
+     */
+    public void focusFind() {
+        findField.requestFocus();
+    }
+
     /** Detach every listener. Called when the tab is removed and at QuPath shutdown. */
     public void dispose() {
         controller.uninstall();
@@ -745,6 +754,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * back to without the user having thought ahead.
      */
     private void beforeMutation() {
+        // The near-universal-component note describes the action the user just took, so it is
+        // cleared by the next one rather than lingering over an unrelated state.
+        coverageNote = null;
         VisibilityStateStore.captureIfAbsent(options);
     }
 
@@ -800,8 +812,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         model.setComponentSelected(row.name(), selected);
         if (selected) {
             noteCoverageIfSwamping(row);
-        } else {
-            coverageNote = null;
+            updateStatus();
         }
     }
 

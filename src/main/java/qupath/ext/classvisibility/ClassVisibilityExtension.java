@@ -220,6 +220,7 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             qupath.showAnalysisPaneProperty().set(true);
         }
         tabPane.getSelectionModel().select(tab);
+        Platform.runLater(pane::focusFind);
         logger.info("Added Class visibility tab to the analysis pane");
     }
 

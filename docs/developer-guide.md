@@ -38,10 +38,22 @@ Three things in `build.gradle.kts` are not obvious and should not be "tidied up"
 Shadow stays on **8.3.5**. Nothing here relocates, so there is no reason to move to 9.x --
 see the monorepo root `CLAUDE.md`.
 
-JavaFX is on the test classpath, but the tests are not meant to start the JavaFX toolkit --
-the three core classes are deliberately JavaFX-free. A test that does need the toolkit will
-also need `--add-modules` and the openjfx Gradle plugin, which is exactly the complication
-the current split avoids.
+JavaFX is on the test classpath, and no test starts the JavaFX **toolkit**. Those are two
+different things, and the distinction is the reason the suite runs with no extra flags:
+
+- `ClassHarvester`, `ClassCensus` and `VisibilityRuleModel` are JavaFX-free outright --
+  `qupath-core` types only.
+- `ViewerVisibilityContractTest` is the deliberate exception. It builds a real `OverlayOptions`
+  so it can assert on `isHidden(PathObject)`, the predicate the painter actually consults, which
+  touches `javafx.base` observable collections and properties. No `Stage`, no `Scene`, no
+  `Platform.startup` -- so no toolkit.
+
+**Do not add `--add-modules` on the strength of that second bullet.** These are classpath jars,
+not modules, and the flag would fail to resolve them. A future test that genuinely needs a live
+toolkit needs `--add-modules javafx.base,javafx.graphics,javafx.controls`, the matching
+`--add-opens`, *and* the openjfx Gradle plugin so the modules are there to resolve -- which is
+the complication the current split exists to avoid. The comment in `build.gradle.kts` carries
+the same warning next to the code.
 
 </details>
 
@@ -325,8 +337,11 @@ InstanSeg pattern.
   with cp1252, where a Unicode arrow in a log line is a `UnicodeEncodeError`. Check with
   `grep -rn '[^\x00-\x7F]' src/`. Unicode is fine in this documentation.
 - **`qupath.fx.dialogs.Dialogs` only.** `qupath.lib.gui.dialogs.Dialogs` is deprecated.
-- **Tests stay JavaFX-free.** The three core classes are pure by design; keep them that way
-  rather than adding a JavaFX toolkit initializer to the test suite.
+- **No test starts the JavaFX toolkit.** The three core classes are pure by design; keep them
+  that way. Touching `javafx.base` types is allowed where it buys real coverage --
+  `ViewerVisibilityContractTest` does it to assert against QuPath's own `isHidden` rather than
+  a mock -- but a toolkit initializer in the suite is a different and much larger cost. See
+  *Building from source*.
 - **`SourceDisciplineTest` is a lint, not a proof.** It greps the main sources for a list of
   object-mutating call texts (`setPathClass(`, `resetDetectionClassifications(` and the rest)
   and fails the build on a hit. It catches the accident, which is the point and the right

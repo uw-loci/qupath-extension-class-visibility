@@ -43,12 +43,22 @@ different things, and the distinction is the reason the suite runs with no extra
 
 - `ClassHarvester`, `ClassCensus` and `VisibilityRuleModel` are JavaFX-free outright --
   `qupath-core` types only.
-- `ViewerVisibilityContractTest` is the deliberate exception. It builds a real `OverlayOptions`
-  so it can assert on `isHidden(PathObject)`, the predicate the painter actually consults, which
-  touches `javafx.base` observable collections and properties. No `Stage`, no `Scene`, no
-  `Platform.startup` -- so no toolkit.
+- **`ViewerVisibilityContractTest`** builds a real `OverlayOptions` so it can assert on
+  `isHidden(PathObject)`, the predicate the painter actually consults, rather than on a mock.
+  That touches `javafx.base` observable collections and properties.
+- **`CloseGuardTest`** is the one that surprises people. It calls the static
+  `ClassVisibilityPane.applyCloseGuard`, and calling a static method **loads the declaring
+  class** -- which resolves its superclass, `BorderPane`. So this one reaches `javafx.graphics`,
+  not merely `javafx.base`, without ever mentioning a JavaFX type itself.
 
-**Do not add `--add-modules` on the strength of that second bullet.** These are classpath jars,
+Neither starts a toolkit. **The line is not which JavaFX modules get loaded -- it is whether
+anything is instantiated that needs a live toolkit.** Loading `BorderPane` is fine;
+constructing a `Control` is not, and that is what would force `Platform.startup`. (It is also
+why `applyCloseGuard` is static rather than an instance method: at QuPath shutdown it has to run
+with no panel alive. The test gets JavaFX-free-ish testability as a side effect of a design
+constraint, not by luck.)
+
+**Do not add `--add-modules` on the strength of those two bullets.** These are classpath jars,
 not modules, and the flag would fail to resolve them. A future test that genuinely needs a live
 toolkit needs `--add-modules javafx.base,javafx.graphics,javafx.controls`, the matching
 `--add-opens`, *and* the openjfx Gradle plugin so the modules are there to resolve -- which is
@@ -270,8 +280,11 @@ already been got wrong once somewhere.
     `EyeIcon`'s open/slashed state reads `rulesAreActive()` -- a non-empty rule set **or**
     `SHOW_SELECTED` at all, so the empty "show only" state that hides everything without any
     rule slashes the eye too; the button's pressed state reads `isOpen()`. Note the resulting
-    equivalence, worth preserving: the eye is open exactly when the status strip would show
-    `status.s1`. Putting rules on the pressed state as well was tried and reverted: the pressed
+    equivalence, worth preserving because it is the pair most likely to drift silently: the eye
+    is open exactly when `status.s1`'s condition holds (`count == 0 && !showOnly`,
+    `ClassVisibilityPane:1382`) -- `rulesAreActive()` is its exact negation. The equivalence is
+    between the two **conditions**; while a harvest is in flight the strip displays
+    `status.s6` instead, so the words are not on screen even though the condition holds. Putting rules on the pressed state as well was tried and reverted: the pressed
     state vanishes when the panel closes, which is exactly the moment C1 is about, and a
     toggle button whose pressed state does not mean "this thing is open" is its own defect.
     **The slash carries the rules meaning; the warning-toned iris is a second channel and
@@ -338,9 +351,11 @@ InstanSeg pattern.
   `grep -rn '[^\x00-\x7F]' src/`. Unicode is fine in this documentation.
 - **`qupath.fx.dialogs.Dialogs` only.** `qupath.lib.gui.dialogs.Dialogs` is deprecated.
 - **No test starts the JavaFX toolkit.** The three core classes are pure by design; keep them
-  that way. Touching `javafx.base` types is allowed where it buys real coverage --
-  `ViewerVisibilityContractTest` does it to assert against QuPath's own `isHidden` rather than
-  a mock -- but a toolkit initializer in the suite is a different and much larger cost. See
+  that way. Loading JavaFX classes is allowed where it buys real coverage: two tests already do
+  it -- `ViewerVisibilityContractTest` (a real `OverlayOptions`, so `javafx.base`) and
+  `CloseGuardTest` (a static call that loads `ClassVisibilityPane`, so `javafx.graphics` via
+  `BorderPane`). **Instantiating** something that needs a live toolkit is the line, and a
+  toolkit initializer in the suite is a different and much larger cost. See
   *Building from source*.
 - **`SourceDisciplineTest` is a lint, not a proof.** It greps the main sources for a list of
   object-mutating call texts (`setPathClass(`, `resetDetectionClassifications(` and the rest)

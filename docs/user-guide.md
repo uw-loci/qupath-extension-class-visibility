@@ -1115,7 +1115,9 @@ somebody screenshots. So the panel says it twice:
   channel, not the only one.
   **The eye is open exactly when the panel's status strip would read
   `[OK] No class rules active -- nothing is hidden by class.`** -- the two are the same
-  question, one asked with the panel open and one with it closed.
+  question, one asked with the panel open and one with it closed. (During a recount the strip
+  shows `Counting classes in ...` instead of either message; the eye still tells you the
+  truth.)
 - **Its tooltip says the same thing in words.** Hover it at any time and, after the sentence
   about what a click will do, it tells you what is in force: `No class rules are in force.` / `3 class rules are
   in force, so some objects are hidden.` / `Every object is hidden: "Show only checked

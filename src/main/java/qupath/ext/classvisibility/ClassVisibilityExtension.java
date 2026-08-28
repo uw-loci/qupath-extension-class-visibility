@@ -165,6 +165,7 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
 
         Platform.runLater(() -> {
             try {
+                reconcileStartupVisibility(OverlayOptions.getSharedInstance());
                 registerMenuItems();
                 installShutdownGuard();
                 installStateWatchers();
@@ -276,6 +277,38 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             showPanel();
         }
         syncMenuItemText();
+    }
+
+    /**
+     * The R2 guard at startup -- the third and last place it runs.
+     *
+     * <p>The panel hides every object the moment it opens, and puts the mode back on close. Both
+     * halves of that are ours, and between them they leave nothing behind. What is not ours is a
+     * crash or a force quit <b>while the panel is open</b>: QuPath binds
+     * {@code selectedClassVisibilityMode} to {@code PathPrefs} but not the class set
+     * ({@code OverlayOptions.java:131-141}), so the next launch reads back "show only checked
+     * classes" with nothing checked -- every object in every image invisible, no panel open, no
+     * cause on screen. The close guard cannot reach that path; nothing of ours ran.</p>
+     *
+     * <p>So it is reconciled here instead, once, before any UI exists. The rule the user gave is
+     * that nothing this panel does may persist unless they pressed the button, and a mode left
+     * over from a session that never closed is exactly that: a leftover. Resetting it costs a
+     * user who <i>deliberately</i> quit in a show-only view nothing but a dropdown they can set
+     * again -- their rule set was never persisted anyway.</p>
+     *
+     * <p>Package-private and static so it can be tested against a real {@link OverlayOptions}
+     * with no QuPath instance and no JavaFX toolkit.</p>
+     *
+     * @param options the options to reconcile
+     * @return true when the mode was reset
+     */
+    static boolean reconcileStartupVisibility(OverlayOptions options) {
+        if (ClassVisibilityPane.applyCloseGuard(options)) {
+            logger.info("Class visibility: 'show only checked classes' was left set with no "
+                    + "checked classes, which hides every object. Reset at startup.");
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -548,10 +581,19 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         }
 
         closing.visibleForUpdatesProperty().unbind();
+        // Whether the user changed anything is asked BEFORE the guard runs, and it decides
+        // whether the guard is worth mentioning. The panel hides every object as it opens, so
+        // opening it and closing it again without checking a class ends in exactly the state the
+        // guard clears -- and a notification on every such close would announce our own default
+        // being tidied up, every time, until the user stopped reading it. It is said when the
+        // guard is undoing a setting the user made themselves.
+        boolean userChanged = closing.hasUserChanges();
         boolean guarded = closing.applyCloseGuard();
         closing.dispose();
         if (guarded) {
-            Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.guard"));
+            if (userChanged) {
+                Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.guard"));
+            }
         } else {
             // Rules survive the close, by design -- closing the panel to reclaim screen space
             // while keeping a filter is legitimate, and clearing them would make the panel

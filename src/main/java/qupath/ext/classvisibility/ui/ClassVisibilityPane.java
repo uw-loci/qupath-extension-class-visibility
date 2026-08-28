@@ -27,6 +27,8 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.effect.BlurType;
+import javafx.scene.effect.DropShadow;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
@@ -42,6 +44,8 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
+import javafx.scene.text.TextFlow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.classvisibility.core.ClassCensus;
@@ -111,7 +115,25 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** Coverage emphasis is suppressed entirely below this many classes. */
     private static final int COVERAGE_EMPHASIS_MIN_CLASSES = 5;
 
+    /** Gap between a class colour swatch and the name beside it. */
+    private static final double GRAPHIC_GAP = 4;
+
+    /**
+     * The halo colour for <i>Check all listed</i> while every object is hidden.
+     *
+     * <p>Mid-blue at full saturation, chosen to sit clear of both QuPath themes: it is lighter
+     * than the dark theme's controls and darker than the light theme's background, so the glow
+     * reads on either without being tuned per theme. It is never the only signal -- the status
+     * strip states the condition in words, the button's tooltip and accessible text say it too,
+     * and the halo is on a control that is already labelled.</p>
+     */
+    private static final Color EVERYTHING_HIDDEN_HALO_COLOR = Color.web("#3D8BFD");
+
     private static final NumberFormat COUNTS = NumberFormat.getIntegerInstance();
+
+    /** Measured height of one line of cell text, and the font size it was measured at. */
+    private static double lineHeight;
+    private static double lineHeightFontSize;
 
     /** The one-deep undo slot: everything needed to put the rules and the mode back. */
     private record UndoEntry(String actionLabel,
@@ -195,6 +217,15 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private boolean countsUnknown = false;
     private boolean countsStale = false;
     private boolean updatingControls = false;
+    /** True once the user has changed a rule; the panel's own opening state does not set it. */
+    private boolean userChangedRules = false;
+
+    /**
+     * The halo drawn on <i>Check all listed</i> while every object is hidden. One instance, one
+     * button: a JavaFX {@code Effect} is attached to a node, so it is not shared.
+     */
+    private final DropShadow everythingHiddenHalo = new DropShadow(BlurType.GAUSSIAN,
+            EVERYTHING_HIDDEN_HALO_COLOR, 10, 0.6, 0, 0);
 
     private UndoEntry undoSlot;
     private PathClass soloedClass;
@@ -226,7 +257,49 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         controller.autoRefreshProperty().bindBidirectional(
                 ClassVisibilityPreferences.autoRefreshCountsProperty());
         controller.install();
+        applyOpeningState();
         refreshRuleDependentUi();
+    }
+
+    /**
+     * Hide everything, the moment the panel opens.
+     *
+     * <p>This is the workflow the ported script had and the one the user asked for back: opening
+     * the panel clears the viewer, and the user checks their way to the populations they want to
+     * see. It is the inverse of a filter you build up while looking at the data, and it is the
+     * right way round for the multiplexed case -- with thirty overlapping classes on screen there
+     * is nothing to see until most of them are gone.</p>
+     *
+     * <p>Three things make it safe rather than alarming. The automatic snapshot is taken first,
+     * so <i>Restore visibility state</i> can put back whatever the user had. The status strip says
+     * <b>[!] Every object is hidden</b> in words the moment it happens, with <i>Switch to "Hide
+     * checked classes"</i> and <i>Reset all</i> beside it, and <i>Check all listed</i> is haloed
+     * as the way back. And the close guard undoes the mode on the way out, so a user who never
+     * checks anything is returned exactly where they started (finding R2).</p>
+     */
+    private void applyOpeningState() {
+        beforeMutation();
+        soloedClass = null;
+        soloedComponent = null;
+        applyOpeningState(options, model);
+        userChangedRules = false;
+    }
+
+    /**
+     * The opening state, as a static so it can be verified against a real {@link OverlayOptions}
+     * without a QuPath instance or a JavaFX toolkit.
+     *
+     * <p>Rules first, mode second, and the order is not arbitrary. Flipping the mode while old
+     * rules are still in the set shows <i>only those classes</i> for a frame -- a view the user
+     * never asked for, built from rules they may not remember setting. Clearing first passes
+     * through "everything visible" instead, which is the state the panel is about to leave.</p>
+     *
+     * @param options the options to write
+     * @param model the rule model to clear
+     */
+    public static void applyOpeningState(OverlayOptions options, VisibilityRuleModel model) {
+        model.clearAllRules();
+        options.setSelectedClassVisibilityMode(OverlayOptions.ClassVisibilityMode.SHOW_SELECTED);
     }
 
     /** @return the pane title, tracking the current image. Used for the tab tooltip. */
@@ -498,7 +571,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countColumn.setSortType(TableColumn.SortType.DESCENDING);
         classTable.getSortOrder().add(countColumn);
 
-        checkAllButton.setTooltip(new Tooltip(Strings.get("tooltip.button.checkAllListed")));
+        // checkAllButton's tooltip is set by updateBulkButtonState, which swaps it for the
+        // everything-hidden wording; setting it here as well would leave two sources for one
+        // string and a stale first paint.
         uncheckAllButton.setTooltip(new Tooltip(Strings.get("tooltip.button.uncheckAllListed")));
         includeEmptyCheck.setTooltip(new Tooltip(Strings.get("tooltip.check.includeEmpty")));
         classButtonRow.getChildren().addAll(checkAllButton, uncheckAllButton);
@@ -937,7 +1012,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // The near-universal-component note describes the action the user just took, so it is
         // cleared by the next one rather than lingering over an unrelated state.
         coverageNote = null;
+        userChangedRules = true;
         VisibilityStateStore.captureIfAbsent(options);
+    }
+
+    /**
+     * @return whether the user has changed a rule since the panel opened. The opening state --
+     *         everything hidden, nothing checked -- does not count, and that distinction is what
+     *         keeps the close guard's notification meaningful. Opening the panel and closing it
+     *         again without checking anything now ends in exactly the state the guard exists to
+     *         clear, so announcing the reset every time would train the user to dismiss the one
+     *         notification that matters when it fires over a setting they made themselves.
+     */
+    public boolean hasUserChanges() {
+        return userChangedRules;
     }
 
     private void pushUndo(String actionLabel) {
@@ -1171,6 +1259,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         updatePlaceholders();
         updateHeaders();
         updateBulkButtonState();
+        // The name cells render differently with a filter on -- matched text is bold -- and a
+        // predicate change does not by itself re-render a row that survived the change.
+        classTable.refresh();
+        componentTable.refresh();
     }
 
     /**
@@ -1182,6 +1274,28 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         boolean nothingListed = filteredClasses.isEmpty();
         checkAllButton.setDisable(nothingListed);
         uncheckAllButton.setDisable(nothingListed);
+        // The way out of the blank viewer, marked on the control that takes it. Not while the
+        // button is disabled: a halo on a control that cannot be clicked points at a dead end.
+        boolean everythingHidden = !nothingListed && isEverythingHidden();
+        checkAllButton.setEffect(everythingHidden ? everythingHiddenHalo : null);
+        checkAllButton.setTooltip(new Tooltip(everythingHidden
+                ? Strings.get("tooltip.button.checkAllListed.allHidden")
+                : Strings.get("tooltip.button.checkAllListed")));
+        checkAllButton.setAccessibleText(everythingHidden
+                ? Strings.get("accessible.checkAllListed.allHidden")
+                : Strings.get("button.checkAllListed"));
+    }
+
+    /**
+     * @return whether the current state hides every object in every image: "show only checked
+     *         classes" with nothing checked. This is the same condition the status strip
+     *         reports as {@code status.s2}, computed from the same two facts, so the halo and
+     *         the sentence explaining it cannot disagree.
+     */
+    private boolean isEverythingHidden() {
+        return options.getSelectedClassVisibilityMode()
+                        == OverlayOptions.ClassVisibilityMode.SHOW_SELECTED
+                && model.activeRuleCount() == 0;
     }
 
     private void updateHeaders() {
@@ -1588,6 +1702,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final class ClassNameCell extends TableCell<ClassRow, ClassRow> {
 
         private final Rectangle swatch = new Rectangle(10, 10);
+        private final TextFlow flow = new TextFlow();
+        /** Holds the swatch always, and the highlighted name only while the filter is on. */
+        private final HBox box = new HBox(GRAPHIC_GAP);
 
         private ClassNameCell() {
             swatch.setArcWidth(2);
@@ -1596,47 +1713,278 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             // in both QuPath themes.
             swatch.setStroke(Color.gray(0.5, 0.6));
             swatch.setStrokeWidth(0.75);
+            box.setAlignment(Pos.CENTER_LEFT);
+            // A Labeled re-fits its own text when the column is dragged; a TextFlow does not, so
+            // the highlighted path has to be told. Only while filtering -- the unfiltered path is
+            // still a plain Labeled and still ellipsises itself.
+            widthProperty().addListener((obs, oldValue, newValue) -> {
+                if (MatchHighlighter.isActive(findField.getText())) {
+                    render(getItem());
+                }
+            });
         }
 
         @Override
         protected void updateItem(ClassRow item, boolean empty) {
             super.updateItem(item, empty);
-            if (empty || item == null) {
+            render(empty ? null : item);
+        }
+
+        private void render(ClassRow item) {
+            if (item == null || isEmpty()) {
                 setText(null);
                 setTooltip(null);
                 setGraphic(null);
                 setFont(Font.getDefault());
                 return;
             }
-            setText(item.displayName());
-            setTooltip(new Tooltip(item.displayName()));
+            String name = item.displayName();
+            // The full name, always, whichever path renders it: both of them truncate.
+            setTooltip(new Tooltip(name));
             PathClass pathClass = item.pathClass();
-            if (pathClass == null || pathClass == PathClass.NULL_CLASS || pathClass.getColor() == null) {
-                setGraphic(null);
-            } else {
+            boolean hasSwatch = pathClass != null && pathClass != PathClass.NULL_CLASS
+                    && pathClass.getColor() != null;
+            if (hasSwatch) {
                 swatch.setFill(ColorToolsFX.getPathClassColor(pathClass));
-                setGraphic(swatch);
             }
-            setFont(soloFont(soloedClass != null && soloedClass == pathClass));
+            boolean solo = soloedClass != null && soloedClass == pathClass;
+            String filter = findField.getText();
+            if (!MatchHighlighter.isActive(filter)) {
+                setFont(soloFont(solo));
+                setText(name);
+                box.getChildren().setAll(hasSwatch ? List.of(swatch) : List.of());
+            } else {
+                setFont(Font.getDefault());
+                setText(null);
+                double reserved = hasSwatch ? swatch.getWidth() + GRAPHIC_GAP : 0;
+                fillHighlighted(this, flow, name, filter, solo, availableWidth(this, reserved));
+                box.getChildren().setAll(hasSwatch ? List.of(swatch, flow) : List.of(flow));
+            }
+            setGraphic(box.getChildren().isEmpty() ? null : box);
         }
     }
 
-    /** Ellipsis-with-tooltip component name cell, bold while soloed. */
+    /** Ellipsis-with-tooltip component name cell, bold while soloed, filter matches bolded. */
     private final class ComponentNameCell extends TableCell<ComponentRow, ComponentRow> {
+
+        private final TextFlow flow = new TextFlow();
+
+        private ComponentNameCell() {
+            widthProperty().addListener((obs, oldValue, newValue) -> {
+                if (MatchHighlighter.isActive(findField.getText())) {
+                    render(getItem());
+                }
+            });
+        }
 
         @Override
         protected void updateItem(ComponentRow item, boolean empty) {
             super.updateItem(item, empty);
-            if (empty || item == null) {
+            render(empty ? null : item);
+        }
+
+        private void render(ComponentRow item) {
+            if (item == null || isEmpty()) {
                 setText(null);
                 setTooltip(null);
+                setGraphic(null);
                 setFont(Font.getDefault());
                 return;
             }
-            setText(item.name());
             setTooltip(new Tooltip(item.name()));
-            setFont(soloFont(item.name().equals(soloedComponent)));
+            boolean solo = item.name().equals(soloedComponent);
+            String filter = findField.getText();
+            if (!MatchHighlighter.isActive(filter)) {
+                setFont(soloFont(solo));
+                setText(item.name());
+                setGraphic(null);
+            } else {
+                setFont(Font.getDefault());
+                setText(null);
+                fillHighlighted(this, flow, item.name(), filter, solo, availableWidth(this, 0));
+                setGraphic(flow);
+            }
         }
+    }
+
+    /**
+     * @param cell the cell being rendered
+     * @param reserved pixels already spoken for inside the cell, such as a colour swatch
+     * @return how much width the name has to fit in. One pixel is held back so a name measured as
+     *         exactly fitting cannot round up into wrapping onto a second line, which is the one
+     *         failure mode of a {@code TextFlow} that a {@code Labeled} does not have.
+     */
+    private static double availableWidth(TableCell<?, ?> cell, double reserved) {
+        Insets insets = cell.getInsets();
+        return cell.getWidth() - insets.getLeft() - insets.getRight() - reserved - 1;
+    }
+
+    /**
+     * Render a name into a {@link TextFlow}, bolding what the filter matched and truncating with
+     * an ellipsis if it does not fit.
+     *
+     * <p><b>Why this measures its own text.</b> A {@code TableCell} is a {@code Labeled} and
+     * ellipsises its own text for free; a {@code TextFlow} is not, and will happily paint past
+     * the column or wrap onto a second line and grow the row. The derived class names this panel
+     * was built for -- {@code CD3: CD8: CD4: CD45: PD1 positive} -- overflow a docked-narrow
+     * column routinely, so "it will usually fit" is not an available answer. The runs are laid
+     * out, summed, and the last visible one is trimmed by binary search until it plus an ellipsis
+     * fits. The full name is on the tooltip in both paths.</p>
+     *
+     * @param cell the cell being rendered, whose text fill the runs follow so they stay legible
+     *        in both themes and on a selected row
+     * @param flow the flow to fill
+     * @param name the full name
+     * @param filterText the raw contents of the Find field
+     * @param solo whether this row is the soloed one, and so already bold
+     * @param available the width to fit in
+     */
+    private static void fillHighlighted(TableCell<?, ?> cell, TextFlow flow, String name,
+                                        String filterText, boolean solo, double available) {
+        List<Text> nodes = new ArrayList<>();
+        for (MatchHighlighter.Run run : MatchHighlighter.runs(name, filterText)) {
+            nodes.add(styledRun(cell, run.text(), run.match(), solo));
+        }
+        flow.setMaxWidth(available > 0 ? available : Double.MAX_VALUE);
+        flow.getChildren().setAll(available > 0 ? truncateToFit(cell, nodes, solo, available) : nodes);
+        pinToOneLine(flow);
+    }
+
+    /**
+     * Hold a {@link TextFlow} to a single line, and clip it there.
+     *
+     * <p><b>This is a safety net, and it was earned.</b> A {@code TextFlow} given less width than
+     * its content does not truncate -- it wraps, and because its height then feeds the row's
+     * height, the row grows with it. A JavaFX probe against this code rendering
+     * {@code CD3: CD8: CD4: CD45: PD1 positive: FoxP3 negative} in a 164px column produced a
+     * <b>748-pixel row</b>: one class name, most of the table. That is what "blowing out the
+     * column" looks like, and it is one arithmetic slip away at all times, because the width the
+     * cell reports and the width the layout finally hands the flow are computed by different
+     * code.</p>
+     *
+     * <p>With the height pinned and a clip on, a measurement that comes out slightly too
+     * generous costs a few clipped characters on one row instead of a table with one readable
+     * entry in it. The ellipsis from {@code truncateToFit} is the good path; this is the floor
+     * under it.</p>
+     *
+     * @param flow the flow to pin
+     */
+    private static void pinToOneLine(TextFlow flow) {
+        double lineHeight = singleLineHeight();
+        flow.setMinHeight(lineHeight);
+        flow.setPrefHeight(lineHeight);
+        flow.setMaxHeight(lineHeight);
+        if (flow.getClip() == null) {
+            Rectangle clip = new Rectangle();
+            clip.widthProperty().bind(flow.widthProperty());
+            clip.heightProperty().bind(flow.heightProperty());
+            flow.setClip(clip);
+        }
+    }
+
+    /**
+     * @return the height of one line in the fonts these cells use, measured rather than assumed.
+     *         Cached against the default font size, which is the only thing that moves it: QuPath
+     *         has a font-size preference, and a hard-coded line height would clip every name in
+     *         the panel the moment somebody raised it. FX thread only, like everything else that
+     *         renders a cell.
+     */
+    private static double singleLineHeight() {
+        double size = Font.getDefault().getSize();
+        if (size != lineHeightFontSize) {
+            Text probe = new Text("Xg");
+            // Bold, because a matched run is bold and bold is never the shorter of the two.
+            probe.setFont(soloFont(true));
+            lineHeight = probe.getLayoutBounds().getHeight();
+            lineHeightFontSize = size;
+        }
+        return lineHeight;
+    }
+
+    /**
+     * @param cell the cell whose text fill the run follows
+     * @param text the run text
+     * @param match whether the filter matched this run
+     * @param solo whether the whole row is bold because it is soloed
+     * @return the styled run. A matched run is bold -- except on a soloed row, where the whole
+     *         name is already bold and bold could no longer mean "this is what you searched for",
+     *         so the match is underlined instead.
+     */
+    private static Text styledRun(TableCell<?, ?> cell, String text, boolean match, boolean solo) {
+        Text node = new Text(text);
+        node.setFont(match || solo ? soloFont(true) : Font.getDefault());
+        node.setUnderline(match && solo);
+        // A raw Text defaults to opaque black, which is invisible in QuPath's dark theme and
+        // wrong on a selected row. The cell's own text fill is the value CSS already computed
+        // for exactly this text, in this theme, in this selection state.
+        node.fillProperty().bind(cell.textFillProperty());
+        return node;
+    }
+
+    /**
+     * @param cell the cell whose text fill the ellipsis run follows
+     * @param nodes the runs, in order
+     * @param solo whether the row is soloed, so the ellipsis matches its weight
+     * @param available the width to fit in
+     * @return the runs unchanged if they already fit, otherwise as many as fit with the last one
+     *         trimmed and an ellipsis appended
+     */
+    private static List<Text> truncateToFit(TableCell<?, ?> cell, List<Text> nodes, boolean solo,
+                                            double available) {
+        double total = 0;
+        for (Text node : nodes) {
+            total += node.getLayoutBounds().getWidth();
+        }
+        if (total <= available) {
+            return nodes;
+        }
+        Text ellipsis = styledRun(cell, "...", false, solo);
+        double budget = available - ellipsis.getLayoutBounds().getWidth();
+        List<Text> fitted = new ArrayList<>();
+        for (Text node : nodes) {
+            double width = node.getLayoutBounds().getWidth();
+            if (width <= budget) {
+                fitted.add(node);
+                budget -= width;
+                continue;
+            }
+            String trimmed = trimToWidth(node, budget);
+            if (!trimmed.isEmpty()) {
+                node.setText(trimmed);
+                fitted.add(node);
+            }
+            break;
+        }
+        fitted.add(ellipsis);
+        return fitted;
+    }
+
+    /**
+     * @param node a run, used as its own measuring stick so the trimmed text is measured in the
+     *        font it will be drawn in
+     * @param budget the width to fit in
+     * @return the longest prefix of the run that fits, possibly empty
+     */
+    private static String trimToWidth(Text node, double budget) {
+        String text = node.getText();
+        if (budget <= 0) {
+            return "";
+        }
+        // Binary search rather than a character-at-a-time walk: this runs for every visible row
+        // on every pixel of a column drag, and a long derived class name is 40-plus characters.
+        int low = 0;
+        int high = text.length();
+        while (low < high) {
+            int mid = (low + high + 1) / 2;
+            node.setText(text.substring(0, mid));
+            if (node.getLayoutBounds().getWidth() <= budget) {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+        node.setText(text);
+        return text.substring(0, low);
     }
 
     /**

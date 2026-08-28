@@ -242,6 +242,109 @@ class SourceDisciplineTest {
                 .contains("stopCombinationHintPulse()");
     }
 
+    /**
+     * Rows whose children an {@code HBox} will shrink when the row does not fit.
+     *
+     * <p>{@code FlowPane} rows are absent on purpose: it lays children out at their preferred
+     * size and wraps, so nothing in one is ever squeezed. {@code VBox} rows are absent for the
+     * same reason in the other axis.</p>
+     */
+    private static final List<String> SHRINKABLE_ROWS = List.of(
+            "imageRow", "presetRow", "exactWarningBox", "filterRow", "scopeRow", "findRow",
+            "classButtonRow");
+
+    /**
+     * The controls that are <b>meant</b> to give up width, and what they do instead of vanishing.
+     *
+     * <p>{@code imageLabel} truncates with a centre ellipsis and keeps a tooltip with the full
+     * name; {@code exactWarningLabel} wraps; the two combos and the find field are the row's
+     * shock absorbers and stay usable at any width because their content is not their label.</p>
+     */
+    private static final List<String> DELIBERATE_ABSORBERS = List.of(
+            "imageLabel", "exactWarningLabel", "presetCombo", "scopeCombo", "findField");
+
+    /**
+     * No control in a shrinkable row may be squeezed below its own text.
+     *
+     * <p>Phase 6 recorded that "every layout number is arithmetic that has never met a font", and
+     * this is that bill arriving: a ComboBox measures its preferred width from its prompt text,
+     * {@code (no presets saved in this project)} was long, the preset row's preferred width
+     * exceeded the docked pane, and an HBox pays for that by shrinking every child toward its
+     * minimum -- which for a Label or a Button is the ellipsis. The user saw
+     * {@code ... [combo] ... ...} at a width they described as "already pretty wide". Widening
+     * would not have fixed it.</p>
+     *
+     * <p>Rendering needs a toolkit; this does not. It reads which controls each shrinkable row
+     * holds and requires every one of them to be either protected by {@code keepFullyReadable}
+     * or a declared absorber -- so a control added to one of these rows later cannot quietly
+     * inherit the defect.</p>
+     */
+    @Test
+    void noControlInAShrinkableRowCanBeSqueezedBelowItsText() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+
+        // Excluding a brace keeps this off the method's own declaration, whose body would
+        // otherwise be swallowed by the argument-list group.
+        Matcher protectedCall = Pattern.compile("keepFullyReadable\\(([^;{]*)\\);").matcher(pane);
+        assertThat(protectedCall.find()).as("keepFullyReadable must be called").isTrue();
+        Set<String> protectedControls = new LinkedHashSet<>(identifiers(protectedCall.group(1)));
+        assertThat(protectedControls).as("controls protected from shrinking").isNotEmpty();
+
+        Matcher rows = Pattern.compile(
+                "(\\w+)\\.getChildren\\(\\)\\.(?:setAll|addAll)\\(([^;{]*)\\);").matcher(pane);
+        List<String> violations = new ArrayList<>();
+        int rowsSeen = 0;
+        while (rows.find()) {
+            String row = rows.group(1);
+            if (!SHRINKABLE_ROWS.contains(row)) {
+                continue;
+            }
+            rowsSeen++;
+            for (String child : identifiers(rows.group(2))) {
+                if (SHRINKABLE_ROWS.contains(child) || DELIBERATE_ABSORBERS.contains(child)
+                        || protectedControls.contains(child)) {
+                    continue;
+                }
+                violations.add(child + " in " + row);
+            }
+        }
+        assertThat(rowsSeen).as("shrinkable rows found in the source").isNotZero();
+        assertThat(violations)
+                .as("controls in a shrinkable row that are neither protected by "
+                        + "keepFullyReadable nor declared absorbers")
+                .isEmpty();
+    }
+
+    /**
+     * The preset combo must not size itself from its own text.
+     *
+     * <p>It is the control the whole row grows and shrinks around, so its preferred width has to
+     * come from the layout. Leaving it computed is what let a transient empty-state prompt decide
+     * how wide the row wanted to be.</p>
+     */
+    @Test
+    void thePresetComboTakesItsPreferredWidthFromTheLayout() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+        assertThat(pane).contains("presetCombo.setPrefWidth(PRESET_COMBO_WIDTH)");
+        // Still the row's shock absorber: it gives up width first and takes the slack back.
+        assertThat(pane).contains("presetCombo.setMaxWidth(Double.MAX_VALUE)");
+        assertThat(pane).contains("HBox.setHgrow(presetCombo, Priority.ALWAYS)");
+    }
+
+    /** @return the simple identifiers in an argument list, ignoring literals and method calls. */
+    private static List<String> identifiers(String argumentList) {
+        List<String> found = new ArrayList<>();
+        for (String argument : argumentList.split(",")) {
+            String trimmed = argument.strip();
+            if (trimmed.matches("[a-zA-Z][a-zA-Z0-9_]*")) {
+                found.add(trimmed);
+            }
+        }
+        return found;
+    }
+
     /** @return how many times {@code needle} appears in {@code text}. */
     private static int occurrences(String text, String needle) {
         int count = 0;

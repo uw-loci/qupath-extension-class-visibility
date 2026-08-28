@@ -107,6 +107,12 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private static final Logger logger = LoggerFactory.getLogger(ClassVisibilityPane.class);
 
     /** Above this pane width, lay out wide (side-by-side). */
+    /**
+     * Preferred width of the preset combo. Any modest number will do; what matters is that the
+     * number comes from the layout rather than from the longest string the combo has ever held.
+     */
+    private static final double PRESET_COMBO_WIDTH = 180;
+
     private static final double WIDE_THRESHOLD = 640;
 
     /** Below this pane width, lay out narrow (stacked). The gap is deliberate hysteresis. */
@@ -609,6 +615,29 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     // Layout
     // ------------------------------------------------------------------------------------------
 
+    /**
+     * Refuse to be squeezed below the text. A control whose whole job is to be readable -- a
+     * fixed label, a button with a verb on it -- has no useful state narrower than its own words:
+     * {@code Save} at its minimum width is {@code ...}, which names nothing and clicks the same.
+     *
+     * <p>{@code HBox} resolves an over-wide row by shrinking children toward their minimums, and
+     * a Label's or Button's computed minimum is the ellipsis. Pinning the minimum to the
+     * preferred size takes these controls out of that negotiation, so the shortfall lands on the
+     * controls that can absorb it -- the combos, the find field, the image label -- instead of
+     * being spread evenly over everything, which is how one over-wide combo turned an entire row
+     * into dots (user, 2026-08-28).</p>
+     *
+     * <p>Do not pass a wrapping control: a {@code USE_PREF_SIZE} minimum asks for the whole text
+     * on one line, which is the opposite of wrapping.</p>
+     *
+     * @param controls the controls to protect
+     */
+    private static void keepFullyReadable(Region... controls) {
+        for (Region control : controls) {
+            control.setMinWidth(Region.USE_PREF_SIZE);
+        }
+    }
+
     private void buildUi() {
         setPadding(new Insets(6));
 
@@ -629,6 +658,15 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         imageRow.setAlignment(Pos.CENTER_LEFT);
 
         presetLabel.setLabelFor(presetCombo);
+        // A ComboBox measures its preferred width from its contents, prompt text included -- so
+        // an empty preset list with a long prompt made this row ask for more width than the pane
+        // had, and an HBox pays for that by shrinking its children toward their MINIMUM widths,
+        // which for a Label or a Button is the ellipsis. The user saw a whole line of "..." at a
+        // width that was not remotely tight. A fixed preferred width takes the measurement away
+        // from whatever text happens to be in the control; max and HGrow are unchanged, so it
+        // still absorbs the slack, and its minimum stays computed, so it is also the control that
+        // gives up width first when the row really is tight.
+        presetCombo.setPrefWidth(PRESET_COMBO_WIDTH);
         presetCombo.setMaxWidth(Double.MAX_VALUE);
         presetCombo.setTooltip(presetTooltip);
         presetCombo.setAccessibleText(Strings.get("label.presets"));
@@ -699,6 +737,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         findRow.setAlignment(Pos.CENTER_LEFT);
         scopeRow.setAlignment(Pos.CENTER_LEFT);
         filterRow.setAlignment(Pos.CENTER_LEFT);
+
+        // Every control in a horizontally shrinkable row whose label IS the control. Three groups
+        // are deliberately absent. The wrapping ones -- exactWarningLabel, includeEmptyCheck, the
+        // Any / All radios -- because a USE_PREF_SIZE minimum asks for the whole text on one line,
+        // which is the opposite of wrapping. The absorbers -- imageLabel (centre ellipsis plus a
+        // tooltip, by design), the two combos, the find field -- because giving up width is their
+        // job. And the mode and cell-display controls, for a different reason again: they sit in
+        // a FlowPane, which lays children out at their preferred size and wraps rather than
+        // shrinking them, so a minimum there would change nothing at all.
+        keepFullyReadable(helpButton, surfaceButton,
+                presetLabel, presetSaveButton, presetDeleteButton,
+                turnOffExact,
+                scopeLabel, findLabel, clearFindButton, autoRefreshCheck, refreshButton,
+                checkAllButton, uncheckAllButton);
 
         VBox header = new VBox(4, imageRow, presetRow, modeAndDisplayRow, exactWarningBox, filterBox);
         header.setPadding(new Insets(0, 0, 6, 0));
@@ -816,6 +868,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // everything-hidden wording; setting it here as well would leave two sources for one
         // string and a stale first paint.
         uncheckAllButton.setTooltip(new Tooltip(Strings.get("tooltip.button.uncheckAllListed")));
+        // A sentence rather than a control name, and the longest string in the panel. It wraps
+        // instead of being pinned to its preferred width -- pinning it would make the whole class
+        // pane refuse to be narrower than that one line, and wrapping is what the Any / All radios
+        // already do with their long labels.
+        includeEmptyCheck.setWrapText(true);
         includeEmptyCheck.setTooltip(new Tooltip(Strings.get("tooltip.check.includeEmpty")));
         classButtonRow.getChildren().addAll(checkAllButton, uncheckAllButton);
         classButtons.getChildren().addAll(classButtonRow, includeEmptyCheck);

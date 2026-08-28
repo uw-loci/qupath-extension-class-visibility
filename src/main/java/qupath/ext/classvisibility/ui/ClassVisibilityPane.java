@@ -1,5 +1,8 @@
 package qupath.ext.classvisibility.ui;
 
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.Timeline;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyStringProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -49,12 +52,14 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
+import javafx.util.Duration;
 import javafx.util.StringConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.classvisibility.core.ClassCensus;
 import qupath.ext.classvisibility.core.ClassHarvester;
 import qupath.ext.classvisibility.core.ClassVisibilityController;
+import qupath.ext.classvisibility.core.CombinationHint;
 import qupath.ext.classvisibility.core.VisibilityPreset;
 import qupath.ext.classvisibility.core.VisibilityPresetStore;
 import qupath.ext.classvisibility.core.VisibilityRuleModel;
@@ -141,6 +146,21 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      */
     private static final Color EVERYTHING_HIDDEN_HALO_COLOR = Color.web("#3D8BFD");
 
+    /**
+     * The attention pulse on the Any / All group: three gentle swells over five seconds.
+     *
+     * <p><b>0.6 Hz, well under WCAG's three-flashes-per-second threshold</b>, and a swelling glow
+     * rather than an on/off flip -- a literal blink is the usual accessibility failure of this
+     * kind, and above three flashes a second it is a photosensitive-seizure risk rather than a
+     * style choice. One half-cycle is {@code HINT_HALF_PERIOD}; {@code HINT_HALF_CYCLES} of them
+     * with auto-reverse is 3 full pulses in 4.998 s, ending back at radius zero.</p>
+     */
+    private static final Duration HINT_HALF_PERIOD = Duration.millis(833);
+
+    private static final int HINT_HALF_CYCLES = 6;
+    private static final double HINT_GLOW_RADIUS = 14;
+    private static final double HINT_GLOW_SPREAD = 0.55;
+
     private static final NumberFormat COUNTS = NumberFormat.getIntegerInstance();
 
     /** Measured height of one line of cell text, and the font size it was measured at. */
@@ -182,6 +202,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final RadioButton hideRadio = new RadioButton(Strings.get("radio.hide"));
     private final RadioButton showOnlyRadio = new RadioButton(Strings.get("radio.showOnly"));
     private final RadioButton anyRadio = new RadioButton();
+    /** The label and both radios as one visual group, which is what the hint pulse glows. */
+    private VBox combinationBox;
     private final RadioButton allRadio = new RadioButton();
     private final CheckBox exactCheck = new CheckBox(Strings.get("check.exact"));
     private final CheckBox autoRefreshCheck = new CheckBox(Strings.get("check.autoRefresh"));
@@ -281,6 +303,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final DropShadow everythingHiddenHalo = new DropShadow(BlurType.GAUSSIAN,
             EVERYTHING_HIDDEN_HALO_COLOR, 10, 0.6, 0, 0);
 
+    /**
+     * The pulsing glow for the Any / All group. The same blue as the halo above, deliberately:
+     * one "look here" idiom in this panel rather than two competing ones. It starts at radius
+     * zero, so it is invisible until the timeline swells it.
+     */
+    private final DropShadow combinationHintGlow = new DropShadow(BlurType.GAUSSIAN,
+            EVERYTHING_HIDDEN_HALO_COLOR, 0, 0, 0, 0);
+
+    /** Decides when that glow fires: once per session, on the crossing to two components. */
+    private final CombinationHint combinationHint = new CombinationHint();
+
+    /** The running pulse, or null. Held so every teardown path can stop it. */
+    private Timeline combinationHintPulse;
+
     /** Held so {@link #dispose()} can detach them from the session-lived shared options. */
     private ChangeListener<OverlayOptions.ClassVisibilityMode> modeListener;
     private ChangeListener<Boolean> exactListener;
@@ -317,6 +353,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         controller.autoRefreshProperty().bindBidirectional(
                 ClassVisibilityPreferences.autoRefreshCountsProperty());
         controller.install();
+        // A dock, an undock, or a collapsed analysis pane takes the panel off screen mid-pulse.
+        // Both re-parenting moves hide the surface the Pane is in, which is what this sees.
+        visibleForUpdatesProperty().addListener((obs, wasVisible, isVisible) -> {
+            if (!Boolean.TRUE.equals(isVisible)) {
+                stopCombinationHintPulse();
+            }
+        });
         applyOpeningState();
         refreshRuleDependentUi();
     }
@@ -430,6 +473,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * a curiosity. The two mode listeners were retained this way before the combo existed.</p>
      */
     public void dispose() {
+        stopCombinationHintPulse();
         controller.uninstall();
         cellDisplayCombo.valueProperty().unbindBidirectional(options.detectionDisplayModeProperty());
         if (modeListener != null) {
@@ -845,7 +889,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         allRadio.setTooltip(new Tooltip(Strings.get("tooltip.combination.all")));
         anyRadio.setWrapText(true);
         allRadio.setWrapText(true);
-        VBox combinationBox = new VBox(2, combinationLabel, anyRadio, allRadio);
+        combinationBox = new VBox(2, combinationLabel, anyRadio, allRadio);
 
         componentPane.getChildren().addAll(componentHeader, componentTable, combinationBox);
     }
@@ -1124,8 +1168,17 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
         wirePresets();
 
-        anyRadio.setOnAction(e -> setCombination(VisibilityRuleModel.Combination.ANY));
-        allRadio.setOnAction(e -> setCombination(VisibilityRuleModel.Combination.ALL));
+        // The stop is on the interaction, not inside setCombination: clicking the radio that is
+        // already selected changes nothing but still means the user has noticed, and continuing
+        // to pulse at somebody who has already acted is nagging.
+        anyRadio.setOnAction(e -> {
+            stopCombinationHintPulse();
+            setCombination(VisibilityRuleModel.Combination.ANY);
+        });
+        allRadio.setOnAction(e -> {
+            stopCombinationHintPulse();
+            setCombination(VisibilityRuleModel.Combination.ALL);
+        });
 
         checkAllButton.setOnAction(e -> {
             pushUndo(Strings.get("action.checkAllListed"));
@@ -1630,6 +1683,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
     @Override
     public void onImageChanged(String imageName) {
+        // The components on screen are about to be replaced, so a glow around a control that was
+        // describing the old image's components is pointing at nothing.
+        stopCombinationHintPulse();
         currentImageName = imageName;
         imageLabel.setText(imageName == null
                 ? Strings.get("label.image.none")
@@ -1895,6 +1951,80 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         }
         anyRadio.setSelected(model.getCombination() == VisibilityRuleModel.Combination.ANY);
         allRadio.setSelected(model.getCombination() == VisibilityRuleModel.Combination.ALL);
+
+        // The moment the control stops being inert is the only moment at which it can be taught.
+        // The panel has to be on screen for that to be true: a rule change can arrive from
+        // QuPath's own class list while the panel sits behind a collapsed analysis pane, and
+        // spending the one showing the user gets on a pulse nobody saw would waste it. A crossing
+        // that cannot fire leaves the session latch unspent.
+        boolean mayPulse = ClassVisibilityPreferences.highlightNewControlsProperty().get()
+                && visibleForUpdatesProperty().get();
+        switch (combinationHint.onComponentCount(n, mayPulse)) {
+            case PULSE -> startCombinationHintPulse();
+            case STOP -> stopCombinationHintPulse();
+            case NONE -> { }
+        }
+    }
+
+    /**
+     * Draw the eye to the Any / All group, once per session, for five seconds.
+     *
+     * <p>Three gentle swells of the same blue halo the panel already uses for <i>Check all
+     * listed</i>, at 0.6 Hz -- see {@link #HINT_HALF_PERIOD} for why the rate matters. The pulse
+     * is pure emphasis: the label beside it already states the rule in words, and nothing here
+     * encodes information that is available only from the motion or only from the colour.</p>
+     *
+     * <p><b>It cannot intercept a click, because it is not a node.</b> A {@code DropShadow} on the
+     * existing container renders behind and around the group without adding anything to the scene
+     * graph, so there is no overlay to make mouse-transparent -- and making the group itself
+     * mouse-transparent would break the very radios it is pointing at. Nothing here touches focus
+     * either.</p>
+     */
+    private void startCombinationHintPulse() {
+        stopCombinationHintPulse();
+        if (combinationBox == null) {
+            return;
+        }
+        combinationBox.setEffect(combinationHintGlow);
+        Timeline pulse = new Timeline(
+                new KeyFrame(Duration.ZERO,
+                        new KeyValue(combinationHintGlow.radiusProperty(), 0.0),
+                        new KeyValue(combinationHintGlow.spreadProperty(), 0.0)),
+                new KeyFrame(HINT_HALF_PERIOD,
+                        new KeyValue(combinationHintGlow.radiusProperty(), HINT_GLOW_RADIUS),
+                        new KeyValue(combinationHintGlow.spreadProperty(), HINT_GLOW_SPREAD)));
+        pulse.setAutoReverse(true);
+        pulse.setCycleCount(HINT_HALF_CYCLES);
+        // An even cycle count ends on the reverse leg, so the glow is already back at zero here;
+        // clearing the effect is about not leaving one attached, not about hiding a bright frame.
+        pulse.setOnFinished(e -> clearCombinationHintGlow());
+        combinationHintPulse = pulse;
+        pulse.play();
+        logger.debug("Pulsing the Any / All hint");
+    }
+
+    /**
+     * Stop the pulse and detach the glow. Idempotent, and called from every route by which the
+     * user can stop needing it: clicking either radio, dropping back below two checked
+     * components, switching image, the panel leaving the screen (which includes a dock or an
+     * undock), and {@link #dispose()}. A {@code Timeline} left running against a node the panel
+     * has finished with is exactly the kind of thing this panel's lifecycle discipline exists to
+     * prevent.
+     */
+    private void stopCombinationHintPulse() {
+        if (combinationHintPulse != null) {
+            combinationHintPulse.stop();
+            combinationHintPulse = null;
+        }
+        clearCombinationHintGlow();
+    }
+
+    private void clearCombinationHintGlow() {
+        combinationHintGlow.setRadius(0);
+        combinationHintGlow.setSpread(0);
+        if (combinationBox != null && combinationBox.getEffect() == combinationHintGlow) {
+            combinationBox.setEffect(null);
+        }
     }
 
     private void updateRuleTable() {

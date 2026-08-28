@@ -9,6 +9,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.control.ButtonBase;
+import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.CustomMenuItem;
 import javafx.scene.control.Label;
@@ -200,11 +201,20 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         MenuItem resetAllItem = new MenuItem(Strings.get("menu.resetAll"));
         resetAllItem.setOnAction(e -> resetAllVisibility());
 
+        // The one switch for the attention pulse on the Any / All control. It lives here rather
+        // than in the panel because it is a setting, not a rule: putting a checkbox for it beside
+        // the control it teaches would add permanent clutter to buy a hint that fires once per
+        // session. It is not on the toolbar button's context menu either -- that menu is the
+        // recovery route, and mixing a preference into it would dilute what it is for.
+        CheckMenuItem highlightItem = new CheckMenuItem(Strings.get("menu.highlightNewControls"));
+        highlightItem.selectedProperty().bindBidirectional(
+                ClassVisibilityPreferences.highlightNewControlsProperty());
+
         MenuItem helpItem = new MenuItem(Strings.get("menu.help"));
         helpItem.setOnAction(e -> showHelp());
         menu.getItems().addAll(showHideMenuItem, new SeparatorMenuItem(),
                 restoreStateMenuItem, resetAllItem,
-                new SeparatorMenuItem(), helpItem);
+                new SeparatorMenuItem(), highlightItem, helpItem);
         // The labels are recomputed as the menu opens, for the same reason the toolbar tooltip is:
         // "is the panel visible" also changes when the user selects another analysis tab or
         // collapses the analysis pane, and neither of those runs any code of ours.

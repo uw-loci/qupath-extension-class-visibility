@@ -209,6 +209,39 @@ class SourceDisciplineTest {
                 .contains("closePanel()");
     }
 
+    /**
+     * The attention pulse has to be stopped everywhere it can outlive its point.
+     *
+     * <p>A {@code Timeline} running against a node the panel has finished with is a leak, and
+     * this panel's whole lifecycle discipline is about not leaving things behind. Five routes end
+     * it: clicking either radio (the user has noticed -- continuing to pulse at them is nagging),
+     * the count dropping below two (covered behaviourally in {@code CombinationHintTest}), an
+     * image switch, the panel leaving the screen -- which is what a dock or an undock looks like
+     * from inside the Pane -- and {@code dispose()}.</p>
+     *
+     * <p>Animation needs a JavaFX toolkit, so which method holds which call is pinned here rather
+     * than exercised.</p>
+     */
+    @Test
+    void theAttentionPulseIsStoppedOnEveryRouteThatEndsIt() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+
+        assertThat(occurrences(methodBody(pane, "private void wireControls()"),
+                "stopCombinationHintPulse()"))
+                .as("both radios cancel the pulse on click, selected one included")
+                .isEqualTo(2);
+        assertThat(methodBody(pane, "public void dispose()"))
+                .as("a disposed panel must not leave a Timeline running")
+                .contains("stopCombinationHintPulse()");
+        assertThat(methodBody(pane, "public void onImageChanged(String imageName)"))
+                .as("the components it was pointing at are about to be replaced")
+                .contains("stopCombinationHintPulse()");
+        assertThat(methodBody(pane, "public ClassVisibilityPane(QuPathGUI qupath)"))
+                .as("going off screen -- a dock, an undock, a collapsed analysis pane -- ends it")
+                .contains("stopCombinationHintPulse()");
+    }
+
     /** @return how many times {@code needle} appears in {@code text}. */
     private static int occurrences(String text, String needle) {
         int count = 0;

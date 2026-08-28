@@ -9,7 +9,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-class-visibility"
     group = "io.github.michaelsnelson"
-    version = "0.1.1"
+    version = "0.1.2"
     description = "Show or hide QuPath objects by class or by class component, from an undockable analysis-pane tab."
     automaticModule = "io.github.michaelsnelson.extension.classvisibility"
 }

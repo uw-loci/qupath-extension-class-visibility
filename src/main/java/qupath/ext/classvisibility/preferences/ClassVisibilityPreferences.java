@@ -45,6 +45,7 @@ public final class ClassVisibilityPreferences {
     private static BooleanProperty rulesExpandedProperty;
     private static BooleanProperty autoRefreshCountsProperty;
     private static BooleanProperty includeEmptyClassesProperty;
+    private static BooleanProperty highlightNewControlsProperty;
     private static DoubleProperty coverageThresholdProperty;
     private static ObjectProperty<ClassHarvester.Scope> scopeProperty;
     private static ObjectProperty<VisibilityRuleModel.Combination> combinationProperty;
@@ -76,6 +77,13 @@ public final class ClassVisibilityPreferences {
                 PREFIX + "autoRefreshCounts", true);
         includeEmptyClassesProperty = PathPrefs.createPersistentPreference(
                 PREFIX + "includeEmptyClasses", false);
+        // On by default: the control it teaches is inert below two checked components and says so
+        // in words nobody reads until they need them. Off is here because motion is unpleasant to
+        // some people and JavaFX gives us no reduced-motion signal from the operating system to
+        // honour on their behalf. What is NOT persisted is whether the hint has already been
+        // shown -- that is a session flag in CombinationHint; see its javadoc.
+        highlightNewControlsProperty = PathPrefs.createPersistentPreference(
+                PREFIX + "highlightNewControls", true);
         // The fraction of an image's classes a component must appear in before its spread ratio
         // is emphasised. 0.8 is a design starting point, not a measured constant -- it is a
         // preference so it can be retuned from bench data without a release.
@@ -164,6 +172,16 @@ public final class ClassVisibilityPreferences {
     public static BooleanProperty includeEmptyClassesProperty() {
         ensureInstalled();
         return includeEmptyClassesProperty;
+    }
+
+    /**
+     * @return whether a control is briefly highlighted the first time in a session that it
+     *         becomes meaningful. Currently just the Any / All choice, which is inert until two
+     *         components are checked.
+     */
+    public static BooleanProperty highlightNewControlsProperty() {
+        ensureInstalled();
+        return highlightNewControlsProperty;
     }
 
     /** @return the coverage fraction above which a component's spread ratio is emphasised. */

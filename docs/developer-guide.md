@@ -39,26 +39,30 @@ Shadow stays on **8.3.5**. Nothing here relocates, so there is no reason to move
 see the monorepo root `CLAUDE.md`.
 
 JavaFX is on the test classpath, and no test starts the JavaFX **toolkit**. Those are two
-different things, and the distinction is the reason the suite runs with no extra flags:
+different things, and the distinction is the reason the suite runs with no extra flags. The
+rule, rather than a roster that goes stale: **a test may touch JavaFX; it must never start the
+toolkit.** Three shapes of test exist under it:
 
-- `ClassHarvester`, `ClassCensus` and `VisibilityRuleModel` are JavaFX-free outright --
-  `qupath-core` types only.
+- `ClassHarvester`, `ClassCensus`, `VisibilityRuleModel`, `VisibilityPreset` and
+  `MatchHighlighter` are JavaFX-free outright -- `qupath-core` types only, or no QuPath at all.
 - **`ViewerVisibilityContractTest`** builds a real `OverlayOptions` so it can assert on
   `isHidden(PathObject)`, the predicate the painter actually consults, rather than on a mock.
   That touches `javafx.base` observable collections and properties.
-- **`CloseGuardTest`** is the one that surprises people. It calls the static
-  `ClassVisibilityPane.applyCloseGuard`, and calling a static method **loads the declaring
-  class** -- which resolves its superclass, `BorderPane`. So this one reaches `javafx.graphics`,
-  not merely `javafx.base`, without ever mentioning a JavaFX type itself.
+- **`CloseGuardTest`, `OpeningStateTest` and `StartupReconciliationTest`** are the ones that
+  surprise people. They call statics -- `ClassVisibilityPane.applyCloseGuard`,
+  `ClassVisibilityPane.applyOpeningState`, `ClassVisibilityExtension.reconcileStartupVisibility`
+  -- and calling a static method **loads the declaring class**, which resolves its superclass,
+  `BorderPane`. So they reach `javafx.graphics`, not merely `javafx.base`, without ever
+  mentioning a JavaFX type themselves. That is also why those three entry points are static:
+  the close guard runs at QuPath shutdown with no panel alive, and the startup reconciliation
+  runs before any panel exists.
 
-Neither starts a toolkit. **The line is not which JavaFX modules get loaded -- it is whether
-anything is instantiated that needs a live toolkit.** Loading `BorderPane` is fine;
-constructing a `Control` is not, and that is what would force `Platform.startup`. (It is also
-why `applyCloseGuard` is static rather than an instance method: at QuPath shutdown it has to run
-with no panel alive. The test gets JavaFX-free-ish testability as a side effect of a design
-constraint, not by luck.)
+None of them starts a toolkit. **The line is not which JavaFX modules get loaded -- it is
+whether anything is instantiated that needs a live toolkit.** Loading `BorderPane` is fine;
+constructing a `Control` is not, and that is what would force `Platform.startup`. The
+testability is a side effect of a design constraint, not luck.
 
-**Do not add `--add-modules` on the strength of those two bullets.** These are classpath jars,
+**Do not add `--add-modules` on the strength of those bullets.** These are classpath jars,
 not modules, and the flag would fail to resolve them. A future test that genuinely needs a live
 toolkit needs `--add-modules javafx.base,javafx.graphics,javafx.controls`, the matching
 `--add-opens`, *and* the openjfx Gradle plugin so the modules are there to resolve -- which is
@@ -145,6 +149,53 @@ panel the only thing in QuPath capable of hiding objects across a restart, which
 failure rather than narrowing it. The mitigations are the status strip, the toolbar button's
 rules tooltip, the guard at panel close **and at quit**, and the snapshot/restore route.
 
+### The opening state, and the three guards around it
+
+`ClassVisibilityPane` ends its constructor with `applyOpeningState()`, which snapshots, clears
+solo state and then calls the public static `applyOpeningState(OverlayOptions,
+VisibilityRuleModel)`:
+
+```java
+model.clearAllRules();
+options.setSelectedClassVisibilityMode(ClassVisibilityMode.SHOW_SELECTED);
+```
+
+**Rules first, mode second, and the order is load-bearing.** Flipping the mode while old rules
+are still in the set shows *only those classes* for a frame -- a view built from rules the user
+may not remember setting. Clearing first passes through "everything visible", which is the
+state the panel is about to leave anyway.
+
+Two consequences worth holding on to:
+
+- **`clearAllRules()` drops every entry in the set, including entries written from QuPath's own
+  class list.** That is what an empty checked set requires, and it is why the snapshot is taken
+  *before* it rather than at the first user mutation. The user guide says so plainly; do not
+  quietly narrow it.
+- **No new preference.** `selectedClassVisibilityMode` and `useExactSelectedClasses` are
+  already bound to `PathPrefs` by `createSharedInstance()`. A second persistent store for
+  either would be a second source of truth, and the two would fight on every write. The
+  opening state is applied to the live options and to nothing else. `useExactSelectedClasses`
+  is deliberately **not** reset on open: it is a QuPath-wide setting the user may have set for
+  their own reasons, and the status strip already warns when it is on.
+
+There are then three checks on the empty-`SHOW_SELECTED` state, and they cover disjoint
+routes. Do not merge them:
+
+| Where | What it does |
+|---|---|
+| `closePanel()` -> `applyCloseGuard` | every close route goes through it: the Extensions menu, the toolbar toggle, the context menu, `WINDOW_HIDDEN`, tab removal |
+| the `WINDOW_CLOSE_REQUEST` filter | the quit path, installed at extension load, so it runs in sessions where the panel was never opened |
+| `reconcileStartupVisibility` | the crash / force-quit path, called first thing in `installExtension`'s `Platform.runLater`, before any UI exists. It delegates to `applyCloseGuard` so there is one implementation of the rule, and logs the startup-specific line on top |
+
+The reconciliation must leave the mode alone whenever any rule is present. It is a rescue from
+a state with no information in it, never a thing that discards someone else's filter.
+
+**The guard's notification is conditional; the guard is not.** Since the panel opens into
+exactly the state the guard undoes, an unconditional notification would fire on every ordinary
+close -- the extension announcing its own default being tidied up, until the user stopped
+reading the one notification that matters. `ClassVisibilityPane.hasUserChanges()` gates the
+message, not the guard. Anything added here inherits that split.
+
 **Do not move the shutdown guard off `WINDOW_CLOSE_REQUEST`, and do not make it an event
 handler.** It was on `WINDOW_HIDING` until Phase 5, where it never ran once. QuPath 0.7 never
 hides its main stage: `QuPathGUI.handleCloseMainStageRequest` is installed with
@@ -219,7 +270,10 @@ its dock/undock button should say via `setSurfaceToggle` / `hideSurfaceToggle`.
 | `ClassHarvester` | `.core` | Off-FX-thread walk via `PathObject.getClassifications()`. Pure, JavaFX-free, unit-testable |
 | `VisibilityRuleModel` | `.core` | Exact selections plus the component rule -> minimal delta against `selectedClasses`, **and the mode** where an operation implies one (solo). Two single-method interfaces to the outside -- `SelectedClassSet` and `VisibilityModeSwitch` -- so tests supply a `LinkedHashSet` and a lambda. Re-entrancy guard. Snapshot/restore. Pure, JavaFX-free, unit-testable |
 | `VisibilitySnapshot` | `.core` | An immutable capture of the whole `OverlayOptions` visibility surface (see below) |
-| `VisibilityStateStore` | `.core` | Holds the one saved snapshot, and takes the automatic one before the panel's first mutation in a session |
+| `VisibilityStateStore` | `.core` | Holds the one snapshot. `capture` **replaces** it and runs when the panel opens; `captureIfAbsent` covers the menu actions that run with the panel closed |
+| `VisibilityPreset` | `.core` | One named preset as JSON: class rules and panel checks as **strings**, plus the mode, exact flag, cell display, opacity and the per-type booleans. Versioned, and tolerant of a file written before a field existed |
+| `VisibilityPresetStore` | `.core` | The project's own `ResourceManager` at `resources/class-visibility`, the mechanism Brightness & Contrast uses for its settings. Degrades to an empty list with no project; never throws at a click |
+| `MatchHighlighter` | `.ui` | Splits a name into matched and unmatched runs for the `Find` bolding. Mirrors `applyFilter`'s predicate exactly, and declines to highlight when case folding changes the string's length. Pure, JavaFX-free |
 | `ClassRow` / `ComponentRow` / `RuleRow` | `.ui` | Row view models for the three tables |
 | `Strings` | `.ui` | Accessor over `strings.properties`. **Every user-facing string lives in that file**, not in Java source |
 | `ClassVisibilityPreferences` | `.preferences` | `PathPrefs` namespace, following `qupath-extension-confusion-matrix`'s `CMPreferences` |
@@ -290,25 +344,57 @@ already been got wrong once somewhere.
     **The slash carries the rules meaning; the warning-toned iris is a second channel and
     never the only one**, and the tooltip and accessible text state both facts in words so
     nothing is glyph- or colour-only.
-15. **Solo is one operation, not two.** `VisibilityRuleModel.soloClass` / `soloComponent` set
+15. **Presets store class names, never `PathClass` instances.** `PathClass.toString()` out,
+    `PathClass.fromString()` back, and **unclassified is JSON `null`**, not a sentinel word: a
+    null cannot collide with a real class name, and `fromString(null)` returns `NULL_CLASS`,
+    while round-tripping `NULL_CLASS.toString()` would invent an ordinary class with that
+    display name. Storing names is also what makes a preset portable to another project that
+    names its classes the same way, which is most of the value in having presets at all.
+    Serialization is checked through `GsonTools.getInstance()`, the serializer
+    `JsonFileResourceManager` actually uses -- a field that survives only an in-memory round
+    trip is still a bug in the product.
+16. **A preset's restore writes viewer state first and rules last.** The mode and the exact
+    flag change what a given rule set *means*, so writing them after the rules repaints once
+    through a combination the preset does not describe.
+17. **The everything-hidden signal is never colour-only.** The halo on `Check all listed` is
+    one of four channels, and the other three are text: the status strip's `status.s2`, the
+    button's `tooltip.button.checkAllListed.allHidden`, and its
+    `accessible.checkAllListed.allHidden`. `isEverythingHidden()` and the strip's `status.s2`
+    branch read the same two facts, so the halo and the sentence explaining it cannot
+    disagree; keep them reading the same predicate.
+18. **Solo is one operation, not two.** `VisibilityRuleModel.soloClass` / `soloComponent` set
     the rule contents *and* switch the mode, inside one FX event. Splitting them across layers
     -- the model owning the set, the Pane owning the mode -- leaves a caller who uses only the
     model half hiding **exactly the class it asked to isolate**, and lets a repaint land
     between the two writes showing the inverse for a frame. There is deliberately no
     `VisibilityRuleModel` constructor without a `VisibilityModeSwitch` (finding L1).
 
-### The snapshot
+### The snapshot, and how it differs from a preset
 
-`Restore visibility state...` restores a snapshot of the *whole* visibility surface, not just
-this panel's three properties: `selectedClasses`, `selectedClassVisibilityMode`,
-`useExactSelectedClasses`, `showObjectPredicate`, `opacity`, `cellDisplayMode`, and the
-per-type booleans `showDetections`, `showAnnotations`, `showTMAGrid`, `showConnections`,
-`fillDetections`, `fillAnnotations`, `showTMACoreLabels`, `showGrid`,
-`showPixelClassification`. All are on `OverlayOptions`.
+`Restore the state from when the panel opened` restores a snapshot of the *whole* visibility
+surface, not just this panel's three properties: `selectedClasses`,
+`selectedClassVisibilityMode`, `useExactSelectedClasses`, `showObjectPredicate`, `opacity`,
+`cellDisplayMode`, and the per-type booleans `showDetections`, `showAnnotations`,
+`showTMAGrid`, `showConnections`, `fillDetections`, `fillAnnotations`, `showTMACoreLabels`,
+`showGrid`, `showPixelClassification`. All are on `OverlayOptions`.
 
-One is taken automatically before the panel's first mutation in a session. That automatic
-snapshot is what makes this a recovery route rather than a power-user feature, and removing
-it would quietly downgrade the feature to the latter.
+**`VisibilityStateStore.capture` replaces; `captureIfAbsent` does not.** The panel calls
+`capture` on every open, so the menu item's label is literally true on the second opening as
+well as the first -- a user who built a view, closed the panel and reopened it wants their way
+back to be *that* view, not to whatever the session started with an hour earlier.
+`captureIfAbsent` covers the other route: the menu actions that run with the panel closed and
+may be the first thing to touch the surface at all. That automatic capture is what makes this
+a recovery route rather than a power-user feature; removing it would quietly downgrade the
+feature to the latter.
+
+A **preset** is deliberately a different object. It is named, saved in the project, and it
+captures `classRules` alongside the panel's own `checkedClasses` / `checkedComponents` /
+`combination` -- **the class set is authoritative on restore**, the checks ride along so the
+panel can explain itself. It does **not** capture `showObjectPredicate`: that is a
+`Predicate<PathObject>`, code rather than data, so a preset leaves whatever predicate it finds
+alone rather than pretending to restore one. Which means a preset cannot rescue a viewer
+blanked by an object predicate, and the snapshot can. Keep both; the single manual save slot
+they replaced is gone, and `VisibilityStateStore.save` with it.
 
 </details>
 
@@ -382,12 +468,19 @@ InstanSeg pattern.
 
 ## Releasing
 
-- **Not catalog-distributed.** There is deliberately no `.github/workflows/notify-catalog.yml`
-  and no catalog entry; distribution will be decided after bench testing. If that decision
-  changes, read the catalog section of the monorepo's root `CLAUDE.md` first -- catalog bumps
-  must **prepend** the new release and keep every prior entry, or installed users lose their
-  update path.
-- Tag plus a GitHub release with the shadow jar attached.
+- **Catalog-distributed**, through `uw-loci/qupath-catalog-mikenelson`.
+  `.github/workflows/notify-catalog.yml` fires a `repository_dispatch` on
+  `release: published`, and the catalog bumps `catalog.json` from it. **Read the catalog
+  section of the monorepo's root `CLAUDE.md` before touching any of this** -- in particular,
+  a catalog bump must **prepend** the new release and keep every prior entry, or installed
+  users lose their update path entirely.
+- After the first release, verify the four things that root `CLAUDE.md` lists: the workflow
+  ran; the catalog got an `Auto-bump <repo> -> <tag>` commit; the new entry's `main_url`
+  returns 200 and matches the published asset name; the entry was prepended with all prior
+  entries kept. The org-level `CATALOG_DISPATCH_TOKEN` secret has failed to be reachable from
+  a brand-new repo before, so check rather than assume.
+- Tag plus a GitHub release with the shadow jar attached. Update the `0.1.0` heading in
+  `CHANGELOG.md` from *unreleased* to the release date at that point, not before.
 - **Do not claim macOS or Windows verification** in the README, the release notes or
   anywhere else until someone has actually run it there.
 

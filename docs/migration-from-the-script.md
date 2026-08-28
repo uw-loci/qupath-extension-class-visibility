@@ -55,30 +55,35 @@ combinatorial classes:
 
 ## What changed in the behaviour you were used to
 
-One thing is simply different, and you will hit it in the first ten seconds. The rest were
-bugs rather than features; if you built habits around them, these are the ones you will
-notice.
+Most of what follows were bugs rather than features; if you built habits around them, these
+are the ones you will notice. The central gesture is unchanged.
 
-### A ticked box means the opposite of what it meant in the script
+### The opening move is the script's, and a ticked box still means "show"
 
-**In the script, ticking a box SHOWED that class. Here, by default, ticking a box HIDES it.**
+**The panel opens by hiding everything, exactly as the script did.** Its first act is to
+switch to `Show only checked classes` with nothing checked, so you start from a blank image
+and tick your way back to what you want to see. A ticked box means *show this*, as it did in
+the script.
 
-The script's first act on opening was to add every class to the hidden list, so its
-checkboxes were un-hide toggles: you started from a blank image and ticked your way back to
-what you wanted. This panel opens without changing anything, so a tick has to mean the
-opposite -- you start from everything visible and tick your way down.
+Two things the script did not have:
 
-If you want the script's polarity, it is one radio button: **`Show only checked classes`**.
-That is the mode where a tick means show, everything else is hidden, and the panel starts
-from blank exactly as the script did. The two radios are labelled as full sentences precisely
-so this is a choice you can see rather than a convention you have to remember.
+- **The polarity is a visible control, not a convention.** `Visibility rule:` has two radio
+  buttons spelled out as full sentences. Switch to **`Hide checked classes`** and everything
+  reappears; a tick then means *hide this*, which is QuPath's own default reading and the
+  better one when you want to take away two classes rather than keep two. The panel opens on
+  the first of the two every time, and does not remember if you switched.
+- **A recorded way back.** The script blanked your view with no record of what it had been.
+  This panel records the whole visibility surface before it hides anything, and
+  `Restore the state from when the panel opened` -- on the toolbar button's right-click menu
+  and under `Extensions > Class visibility` -- puts it back. Closing the panel with nothing
+  checked also returns the mode to `Hide checked classes`, so you never leave the panel in the
+  blank state.
 
-One caution if you adopt that mode as a habit, and it is the failure this extension is most
-careful about: the mode is saved across a QuPath restart while your ticks are not, so leaving
-QuPath in `Show only checked classes` and quitting means the next launch starts with
-everything hidden and nothing on screen to say why. See
-[If everything disappears](user-guide.md#if-everything-disappears), which covers both how to
-get out of it and how to avoid it.
+One caution the script shared and this extension is careful about: the mode is saved across a
+QuPath restart while your ticks are not, so `Show only checked classes` plus an empty set is
+reachable at launch. The extension checks for exactly that pair when it loads and puts the
+mode back before any window appears. See
+[If everything disappears](user-guide.md#if-everything-disappears).
 
 ### The script crashed if any object was unclassified
 
@@ -151,14 +156,18 @@ equivalent, and nothing in it changes object data of any kind.
   can dock it into QuPath's analysis pane next to Annotations and Hierarchy when you would
   rather it were always visible and out of the way. Nothing appears in your analysis pane
   unless you put it there.
-- **The panel no longer hides everything the moment it opens.** The script's first act was
-  to add every class to the hidden list, so opening it blanked your image until you checked
-  something. This panel opens without changing anything, and the status strip tells you so:
-  `[OK] No class rules active -- nothing is hidden by class.`
-- **You can get back.** Between `Reset all` in the panel and `Restore visibility state...`
-  on the toolbar button's menu, there is always a way out of a state where you cannot see
-  anything -- including states the panel did not cause. See
-  [If everything disappears](user-guide.md#if-everything-disappears).
+- **Blanking the view is now announced and reversible.** The script blanked your image on
+  open and said nothing. This panel does the same thing, then states it --
+  `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` --
+  haloes `Check all listed` as the one-click way back, and records what you had first.
+- **You can get back.** Between `Check all listed`, `Reset all` in the panel and
+  `Restore the state from when the panel opened` on the toolbar button's menu, there is always
+  a way out of a state where you cannot see anything -- including states the panel did not
+  cause. See [If everything disappears](user-guide.md#if-everything-disappears).
+- **Views can be saved and named.** The script kept nothing between runs. `Preset` in the
+  panel header saves the setup you have into the project, under a name, and brings it back on
+  a later session or a different image. See
+  [Presets: a view you named](user-guide.md#presets-a-view-you-named).
 
 ---
 

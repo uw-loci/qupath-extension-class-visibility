@@ -7,7 +7,9 @@ A QuPath 0.7 extension, version 0.1.0. It is a port of the community Groovy scri
 *"Show specific classes of objects v3"* ([image.sc topic 31828](https://forum.image.sc/t/31828)),
 which stopped working when `OverlayOptions.hiddenClassesProperty()` was removed.
 
-Requires **QuPath 0.7.0 or later**. No platform has been verified yet -- see
+Requires **QuPath 0.7.0 or later**. It has been built and unit-tested on Linux and loaded
+into a running QuPath there; **it has never been run on macOS or Windows**, and no part of it
+has been exercised against a real multiplexed slide -- see
 [Reporting a problem](#reporting-a-problem).
 
 ## Do you need this?
@@ -57,6 +59,10 @@ of overlapping supersets. Everything the panel adds exists because of that shape
   `In 26 of the 28 classes in this image, and 401,552 of 452,110 objects.`
 - **`Find` over the component list**. The built-in pane's filter is better than ours over
   classes; it has nothing at all to filter components with, because it has no components.
+  Whatever you type is shown in **bold** in the rows it matched.
+- **Named views, saved in the project.** A filter worth building on a 30-class panel is worth
+  building once. `Preset` in the panel header saves the view you have now under a name, into
+  the project, so it comes back next week and for whoever else opens that project.
 
 It writes to the same QuPath setting the built-in class list writes to. The two stay in
 agreement; nothing here is a private copy of QuPath's state.
@@ -81,12 +87,35 @@ calls without noticing.
 
 ## Installation
 
-Drag the `qupath-extension-class-visibility-<version>-all.jar` onto QuPath, or copy it into
-your QuPath extensions directory and restart.
+**From the extension catalog.** In QuPath, open **Extensions > Manage extensions**, add the
+catalog `https://github.com/uw-loci/qupath-catalog-mikenelson` if it is not already listed,
+and install *Class Visibility* from it. Installing this way is what lets QuPath tell you when
+a new version is out; a hand-installed jar gets no update notifications.
 
-Not distributed through an extension catalog.
+**Or by hand.** Drag the `qupath-extension-class-visibility-<version>-all.jar` onto QuPath, or
+copy it into your QuPath extensions directory and restart. QuPath does not load new extensions
+on the fly -- restart it either way.
 
 ## Using it
+
+**Opening the panel hides every object, and that is deliberate.** Pressing the toolbar button
+records the view you had, then switches to `Show only checked classes` with nothing checked --
+so nothing is drawn. You check the classes or components you want and they come back, one
+population at a time. That is the workflow of the script this extension ports, and it is the
+right way round for the data it is for: with thirty overlapping classes painted over each other
+there is nothing to see until most of them are gone.
+
+You are not left to work that out. The status strip says
+`[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` the
+moment it happens; **`Check all listed` carries a blue halo** for as long as it is true, and
+one click on it puts every listed class back; and `Switch to "Hide checked classes"` and
+`Reset all` sit beside the message. Close the panel without checking anything and the mode
+goes back to `Hide checked classes`, so every object is visible again.
+
+One thing to know before the first press: **opening the panel also clears any class rules
+already in force**, including rules you set from QuPath's own class list. They are recorded in
+the snapshot taken on the way in, and *Restore the state from when the panel opened* brings
+them back.
 
 **The toolbar button opens the panel as a window.** It sits immediately right of the
 brightness/contrast button, and it is drawn as an **eye**, slashed whenever classes are being
@@ -99,8 +128,8 @@ If you would rather have it docked, click **Dock as tab** at the top right of th
 the filter you typed, the sort you chose. Once docked, QuPath's own drag-the-tab-out gesture
 works too.
 
-Right-click the toolbar button for those two moves plus save/restore of the whole visibility
-state, a full reset, and help; **Extensions > Class visibility** carries the same items, so
+Right-click the toolbar button for those two moves plus *Restore the state from when the panel
+opened*, a full reset, and help; **Extensions > Class visibility** carries the same items, so
 none of it is lost if the toolbar button fails to appear. The button itself closes the panel
 when it is already in front; its tooltip says which of open, raise or close the next click
 will do, and then how many class rules are in force.
@@ -137,10 +166,14 @@ the panel open:
 1. **`Reset all`** in the panel, or **Reset all visibility** in either menu. Both clear every
    rule, switch back to "Hide checked classes", and turn off "Exact matches only" -- the
    same three things QuPath's own *Restore class visibility to default settings* does.
-2. **Restore visibility state...**, which puts back a snapshot taken before this panel first
-   changed anything -- including overlay opacity and which object types QuPath is showing,
-   not only the class rules. It restores *all* of that, as it was when the snapshot was
-   taken, which may be hours ago; the user guide describes what that covers.
+2. **Restore the state from when the panel opened**, which puts back the snapshot taken
+   automatically every time the panel opens -- including overlay opacity and which object
+   types QuPath is showing, not only the class rules. Nobody has to have planned ahead for
+   this one; the user guide describes what it covers.
+
+A **preset** is the third route and a different kind of thing: a view *you* named and saved
+into the project, chosen from the `Preset` combo in the panel header. Presets need forethought
+and a project; the snapshot above needs neither, which is why both exist.
 
 Without this extension, QuPath's own route is *Restore class visibility to default settings*,
 in the menu under the **More options** button beside the show/hide dropdown at the top of the
@@ -159,8 +192,9 @@ is the one next to the dropdown.)
 ## Reporting a problem
 
 File an issue on this repository's issue tracker, saying which platform you are on and which
-version of QuPath you are running. **No platform has been verified yet**, so a
-platform-specific report is useful rather than redundant.
+version of QuPath you are running. **This extension has only ever been run on Linux**, and its
+behaviour on a real multiplexed slide has not been watched by anyone, so a report of any kind
+is useful rather than redundant -- most of all one from macOS or Windows.
 
 The extension and the script it ports exist because of a long forum thread of people fixing
 each other's work; the contributors are credited at the end of

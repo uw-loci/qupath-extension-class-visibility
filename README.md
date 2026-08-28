@@ -7,9 +7,11 @@ A QuPath 0.7 extension, version 0.1.1. It is a port of the community Groovy scri
 *"Show specific classes of objects v3"* ([image.sc topic 31828](https://forum.image.sc/t/31828)),
 which stopped working when `OverlayOptions.hiddenClassesProperty()` was removed.
 
-Requires **QuPath 0.7.0 or later**. It has been built and unit-tested on Linux and loaded
-into a running QuPath there; **it has never been run on macOS or Windows**, and no part of it
-has been exercised against a real multiplexed slide -- see
+Requires **QuPath 0.7.0 or later**. It has been built and unit-tested on Linux, and three
+behaviours have been checked by hand there against a real multiplexed slide: a component
+rule redrawing the viewer, closing the panel restoring the view it opened onto, and quitting
+with the panel open leaving everything visible on relaunch. Everything else rests on unit
+tests and static checks. **It has never been run on macOS or Windows** -- see
 [Reporting a problem](#reporting-a-problem).
 
 ## Do you need this?

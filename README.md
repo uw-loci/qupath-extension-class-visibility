@@ -7,12 +7,7 @@ A QuPath 0.7 extension, version 0.1.1. It is a port of the community Groovy scri
 *"Show specific classes of objects v3"* ([image.sc topic 31828](https://forum.image.sc/t/31828)),
 which stopped working when `OverlayOptions.hiddenClassesProperty()` was removed.
 
-Requires **QuPath 0.7.0 or later**. It has been built and unit-tested on Linux, and three
-behaviours have been checked by hand there against a real multiplexed slide: a component
-rule redrawing the viewer, closing the panel restoring the view it opened onto, and quitting
-with the panel open leaving everything visible on relaunch. Everything else rests on unit
-tests and static checks. **It has never been run on macOS or Windows** -- see
-[Reporting a problem](#reporting-a-problem).
+Requires **QuPath 0.7.0 or later**.
 
 ## Do you need this?
 
@@ -209,9 +204,17 @@ is the one next to the dropdown.)
 ## Reporting a problem
 
 File an issue on this repository's issue tracker, saying which platform you are on and which
-version of QuPath you are running. **This extension has only ever been run on Linux**, and its
-behaviour on a real multiplexed slide has not been watched by anyone, so a report of any kind
-is useful rather than redundant -- most of all one from macOS or Windows.
+version of QuPath you are running.
+
+**This extension has only ever been run on Linux.** On a real multiplexed slide there, three
+behaviours have been checked by hand: a component rule redrawing the viewer, closing the panel
+restoring the view it opened onto, and quitting with the panel open leaving everything visible
+on relaunch. Everything else rests on unit tests and static checks.
+
+Nothing at all has been run on **macOS or Windows**. The parts most likely to differ are the
+toolbar button, which inserts itself into a layout the extension does not control, and window
+placement. A report from either platform is more useful than you might think -- it is more
+likely to be new than known.
 
 The extension and the script it ports exist because of a long forum thread of people fixing
 each other's work; the contributors are credited at the end of

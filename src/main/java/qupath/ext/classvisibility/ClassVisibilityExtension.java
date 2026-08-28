@@ -87,6 +87,12 @@ import qupath.lib.objects.classes.PathClass;
  * different questions, and the one that still matters after the panel is closed is the second.
  * Putting both on the pressed state would have said one thing twice and left the other unsaid
  * outside the tooltip, which is what {@link EyeIcon} exists to fix (finding C1).</p>
+ *
+ * <p>The icon kept its job when the close became a full restore (0.1.1), and it is the same job:
+ * rules set from QuPath's own class list are still rules, and after our close the rules in force
+ * are exactly those. What did change is the <i>notification</i> beside it -- see
+ * {@link #closeMessage}, which now stays quiet when the rules in force are the ones the panel
+ * just put back.</p>
  */
 public class ClassVisibilityExtension implements QuPathExtension, GitHubProject {
 
@@ -305,9 +311,22 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     }
 
     /**
-     * The R2 guard at QuPath shutdown. "Show only checked classes" persists across restarts but
-     * the rule set does not, so leaving that pair behind means every object in every image is
-     * invisible at the next launch, with no panel open and no obvious cause.
+     * Closing the panel, and the R2 guard, at QuPath shutdown.
+     *
+     * <p><b>Quitting with the panel open is a close.</b> It is the one dismissal route the panel
+     * cannot see: QuPath's quit sequence ends in {@code System.exit(0)}, so our window is never
+     * hidden and no handler of ours fires. Left alone, a user who quit with the panel up would
+     * get none of the restore that every other close gives them -- their pre-panel rules,
+     * opacity and object types discarded by a session they never got to end. So the panel is
+     * closed here, through the same {@code closePanel()} every other route uses, which restores
+     * the snapshot and runs the guard on the result.</p>
+     *
+     * <p>Then the guard runs again for the panel-closed case. "Show only checked classes"
+     * persists across restarts but the rule set does not, so leaving that pair behind means every
+     * object in every image is invisible at the next launch, with no panel open and no obvious
+     * cause. With the panel closed that pair can only have come from QuPath's own class list, and
+     * nothing of ours would otherwise look at it. The guard is idempotent, so running it after a
+     * close that already ran it costs nothing.</p>
      *
      * <p><b>WINDOW_CLOSE_REQUEST, as an event filter, and both halves of that matter.</b> This
      * was registered on {@code WINDOW_HIDING} until Phase 5, where it never ran once: QuPath
@@ -321,9 +340,13 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
      *
      * <p>QuPath can still cancel the quit (unsaved viewers, a running script, the script editor),
      * and every one of those paths consumes the event and returns <i>before</i> preferences are
-     * saved. The guard has then flipped the mode mid-session -- but only ever out of the state in
-     * which the user is looking at a completely empty viewer, so it is a rescue rather than a
-     * control moving under their hand, and the notification says what happened either way.</p>
+     * saved. A cancelled quit therefore leaves the panel closed and the view restored, as though
+     * the user had closed it themselves -- visible, undone by pressing the toolbar button again,
+     * and the price of a filter that has to have written before {@code savePreferences()} runs.
+     * The alternative, restoring the view but leaving the panel open, would leave a panel on
+     * screen whose rules had all been undone underneath it. The guard's own half is unchanged:
+     * it only ever flips the mode out of the state in which the user is looking at a completely
+     * empty viewer, so it is a rescue rather than a control moving under their hand.</p>
      */
     private void installShutdownGuard() {
         Stage stage = qupath.getStage();
@@ -331,14 +354,19 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             return;
         }
         stage.addEventFilter(WindowEvent.WINDOW_CLOSE_REQUEST, e -> {
-            if (ClassVisibilityPane.applyCloseGuard(OverlayOptions.getSharedInstance())) {
-                logger.info("Class visibility guard fired at shutdown");
-                try {
-                    Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.guard"));
-                } catch (RuntimeException ex) {
-                    // A notification during shutdown is a courtesy, never a reason to fail a quit.
-                    logger.debug("Could not show the shutdown guard notification: {}", ex.getMessage());
+            // Nothing in here may throw. A filter runs in the capturing phase of QuPath's own
+            // close handling, so an exception escaping it could refuse the user their quit.
+            try {
+                if (isOpen()) {
+                    closePanel();
                 }
+                if (ClassVisibilityPane.applyCloseGuard(OverlayOptions.getSharedInstance())) {
+                    logger.info("Class visibility guard fired at shutdown");
+                    notifyQuietly(Strings.get("notify.guard"), false);
+                }
+            } catch (RuntimeException ex) {
+                logger.warn("Class visibility: closing the panel at shutdown failed: {}",
+                        ex.getMessage(), ex);
             }
         });
     }
@@ -422,6 +450,10 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         pane.visibleForUpdatesProperty().bind(window.getStage().showingProperty());
         pane.setSurfaceToggle(Strings.get("menu.dockAsTab"),
                 Strings.get("tooltip.menu.dockAsTab"), this::dockAsTab);
+        // The window's own close button, and any other hide of it. Docking hides this stage too,
+        // which is what the reparenting flag is for: a re-parented panel is still running, and
+        // running it through closePanel() would restore the opening state and throw away rules
+        // the user is in the middle of using.
         window.getStage().addEventHandler(WindowEvent.WINDOW_HIDDEN, e -> {
             if (!reparenting) {
                 closePanel();
@@ -541,11 +573,26 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     }
 
     /**
-     * Close the panel from whichever surface it is in and run the R2 guard.
+     * Close the panel from whichever surface it is in, put back the state it opened onto, and run
+     * the R2 guard.
      *
-     * <p>"Show only checked classes" with an empty rule set hides every object in every image,
-     * and QuPath persists that mode while not persisting the set -- so the state comes back at
-     * the next launch with no panel open and no visible cause.</p>
+     * <p><b>The panel is a session</b> (user, 2026-08-28). It hides every object as it opens, and
+     * closing it replays the snapshot taken then -- rules, mode, exact flag, object predicate,
+     * opacity, cell display mode and the per-type booleans -- so QuPath ends up exactly where the
+     * user left it. Every dismissal route lands here: the window's close button, <i>Hide
+     * panel</i>, the Extensions-menu toggle, the toolbar button, and QuPath quitting. Docking and
+     * undocking do not, and must not: they re-parent a running panel, and the user's rules
+     * survive the move.</p>
+     *
+     * <p>The guard still runs afterwards. "Show only checked classes" with an empty rule set
+     * hides every object in every image, and QuPath persists that mode while not persisting the
+     * set -- so if that pair is what the user <i>had</i> before opening the panel, restoring it
+     * faithfully would hand them an empty viewer at the next launch with no panel open and no
+     * visible cause.</p>
+     *
+     * <p>Listeners are detached before the restore, not after. The restore is a burst of option
+     * changes -- one uncoalesced overlay-cache clear per rule -- and a panel on its way out has
+     * no business rebuilding its tables for a view nobody will see.</p>
      */
     private synchronized void closePanel() {
         if (!isOpen()) {
@@ -574,32 +621,107 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         }
 
         closing.visibleForUpdatesProperty().unbind();
-        // Whether the user changed anything is asked BEFORE the guard runs, and it decides
-        // whether the guard is worth mentioning. The panel hides every object as it opens, so
-        // opening it and closing it again without checking a class ends in exactly the state the
-        // guard clears -- and a notification on every such close would announce our own default
-        // being tidied up, every time, until the user stopped reading it. It is said when the
-        // guard is undoing a setting the user made themselves.
         boolean userChanged = closing.hasUserChanges();
-        boolean guarded = closing.applyCloseGuard();
         closing.dispose();
-        if (guarded) {
-            if (userChanged) {
-                Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.guard"));
-            }
-        } else {
-            // Rules survive the close, by design -- closing the panel to reclaim screen space
-            // while keeping a filter is legitimate, and clearing them would make the panel
-            // destructive of the user's working state. What was missing is anyone saying so.
-            int remaining = OverlayOptions.getSharedInstance().selectedClassesProperty().size();
-            if (remaining > 0) {
-                Dialogs.showInfoNotification(Strings.get("notify.title"), remaining == 1
-                        ? Strings.get("notify.rulesStillActive.one")
-                        : Strings.format("notify.rulesStillActive.many", remaining));
-            }
+
+        ClassVisibilityPane.RestoreOutcome outcome = closing.restoreOpeningState();
+        boolean restored = outcome == ClassVisibilityPane.RestoreOutcome.RESTORED;
+        // Asked after the restore and before the guard: it is the guard that would move the mode
+        // away from the state we just put back.
+        boolean restoredExactly = restored && closing.matchesOpeningState();
+        boolean guarded = closing.applyCloseGuard();
+        int remaining = OverlayOptions.getSharedInstance().selectedClassesProperty().size();
+        switch (closeMessage(restoredExactly, !restored, guarded, userChanged, remaining)) {
+            case RESTORE_FAILED -> notifyQuietly(Strings.get("notify.restoreFailed"), true);
+            case GUARD -> notifyQuietly(Strings.get("notify.guard"), false);
+            case RULES_ACTIVE -> notifyQuietly(remaining == 1
+                    ? Strings.get("notify.rulesStillActive.one")
+                    : Strings.format("notify.rulesStillActive.many", remaining), false);
+            case NONE -> { }
         }
         syncToolbarState();
         logger.info("Closed the Class visibility panel");
+    }
+
+    /** What a close has to tell the user, if anything. */
+    enum CloseMessage {
+        /** Nothing worth saying: the user is back where they were. */
+        NONE,
+        /** The restore did not run, or threw. The user is somewhere they did not choose. */
+        RESTORE_FAILED,
+        /** The R2 guard changed the mode, and the mode it changed was the user's own. */
+        GUARD,
+        /** Class rules are in force that are not the ones we put back. */
+        RULES_ACTIVE
+    }
+
+    /**
+     * What to say after a close. Package-private and static so the decision can be tested without
+     * a toolkit, a QuPath instance or a panel.
+     *
+     * <p><b>The C1 notification changed job in 0.1.1.</b> It was written when closing the panel
+     * left our rules in force: "the panel is closed, but N class rules are still in force" was
+     * then news the user needed. Closing now restores the state the panel opened onto, so firing
+     * it after a successful restore would announce the user's <i>own</i> pre-existing rules back
+     * at them, every single close, until they stopped reading it -- noise, not safety. It is
+     * suppressed exactly when the rules in force are the ones we just put back, and still fires
+     * otherwise: a restore that failed, or one that did not land, can leave rules of ours behind,
+     * and that is the case it was built for. The eye icon is unaffected either way -- rules set
+     * from QuPath's own class list are still rules, and the icon reports them whether or not this
+     * panel put them there.</p>
+     *
+     * <p>The guard message is gated differently after a restore than before one. It used to be
+     * gated on the user having changed something, because without a restore the guard's usual
+     * job was tidying up the panel's own opening default -- announcing that every time would have
+     * trained the user to dismiss the one notification that matters. After a successful restore
+     * the guard can only be undoing a state the user themselves had before opening the panel, so
+     * it is always worth saying.</p>
+     *
+     * @param restoredExactly the snapshot was replayed and the rules in force are now its own
+     * @param restoreFailed no snapshot was replayed, or replaying it threw
+     * @param guarded the R2 guard changed the visibility mode
+     * @param userChanged the user changed a rule while the panel was open
+     * @param rulesInForce how many class rules are in force now
+     * @return the one message to show, or {@link CloseMessage#NONE}
+     */
+    static CloseMessage closeMessage(boolean restoredExactly, boolean restoreFailed,
+            boolean guarded, boolean userChanged, int rulesInForce) {
+        if (restoreFailed) {
+            // Said in preference to the guard message even when the guard also fired: "we could
+            // not put your view back" is the bigger fact, and two notifications for one close is
+            // how a user learns to dismiss both.
+            return CloseMessage.RESTORE_FAILED;
+        }
+        if (guarded) {
+            return restoredExactly || userChanged ? CloseMessage.GUARD : CloseMessage.NONE;
+        }
+        if (restoredExactly) {
+            return CloseMessage.NONE;
+        }
+        return rulesInForce > 0 ? CloseMessage.RULES_ACTIVE : CloseMessage.NONE;
+    }
+
+    /**
+     * Show a notification that can never fail the caller.
+     *
+     * <p>Every close path runs through here, and one of them is QuPath quitting: this is called
+     * from inside a {@code WINDOW_CLOSE_REQUEST} filter, where a thrown exception would propagate
+     * into QuPath's own close handling. A message to the user is a courtesy; refusing them their
+     * quit is not.</p>
+     *
+     * @param message the text to show
+     * @param warning true for a warning notification rather than an informational one
+     */
+    private static void notifyQuietly(String message, boolean warning) {
+        try {
+            if (warning) {
+                Dialogs.showWarningNotification(Strings.get("notify.title"), message);
+            } else {
+                Dialogs.showInfoNotification(Strings.get("notify.title"), message);
+            }
+        } catch (RuntimeException ex) {
+            logger.debug("Could not show a Class visibility notification: {}", ex.getMessage());
+        }
     }
 
     /** Raise whichever window currently holds the Pane -- ours, or QuPath's undocked tab window. */
@@ -857,9 +979,10 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         CustomMenuItem showHide = isOpen()
                 ? menuItem(Strings.get("menu.hide"), Strings.get("tooltip.menu.hide"), false)
                 : menuItem(Strings.get("menu.show"), Strings.get("tooltip.menu"), false);
-        // Hiding routes through closePanel() rather than a bespoke close path, so the R2 guard
-        // fires whichever way the user dismisses the panel. A second dismissal route that skipped
-        // the guard would reintroduce the footgun this extension exists to prevent.
+        // Hiding routes through closePanel() rather than a bespoke close path, so the session
+        // restore and the R2 guard both fire whichever way the user dismisses the panel. A
+        // second dismissal route that skipped them would leave the user in a view they did not
+        // choose -- which is the footgun this extension exists to prevent.
         showHide.setOnAction(e -> {
             if (isOpen()) {
                 closePanel();

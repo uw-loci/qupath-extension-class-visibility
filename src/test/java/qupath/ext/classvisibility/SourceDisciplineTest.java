@@ -162,6 +162,93 @@ class SourceDisciplineTest {
                 .doesNotContain("WindowEvent.WINDOW_HIDING");
     }
 
+    /**
+     * The restore has to be on the close paths and off the re-parenting ones.
+     *
+     * <p>Closing the panel now puts back everything the panel found when it opened (user,
+     * 2026-08-28), and every dismissal route reaches that through one method: the window's close
+     * button, <i>Hide panel</i>, the Extensions-menu toggle, the toolbar button and QuPath
+     * quitting all call {@code closePanel()}. Docking and undocking must not -- they hide a Stage
+     * and remove a Tab exactly as a close does, and a restore reached from there would throw away
+     * the rules the user is in the middle of using, which is the most likely way to break
+     * something that currently works.</p>
+     *
+     * <p>Which method a click reaches is a wiring fact, not a behavioural one: proving it at
+     * runtime needs a JavaFX toolkit, a QuPath instance and a real analysis pane. So it is pinned
+     * here, the same way the shutdown guard's event type is.</p>
+     */
+    @Test
+    void theRestoreIsOnTheClosePathAndNotOnTheReparentingOnes() throws IOException {
+        String extension = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ClassVisibilityExtension.java")), StandardCharsets.UTF_8);
+
+        assertThat(occurrences(extension, "restoreOpeningState()"))
+                .as("the restore has exactly one call site, so no route can skip or double it")
+                .isEqualTo(1);
+        assertThat(methodBody(extension, "private synchronized void closePanel()"))
+                .as("closePanel is the one place the panel's session is ended")
+                .contains("restoreOpeningState()");
+
+        // Both re-parenting operations hide a Stage or remove a Tab. Neither ends the session.
+        assertThat(methodBody(extension, "private synchronized void dockAsTab()"))
+                .as("docking moves a running panel; the user's rules must survive it")
+                .doesNotContain("restoreOpeningState")
+                .doesNotContain("closePanel");
+        assertThat(methodBody(extension, "private synchronized void undockToWindow()"))
+                .as("undocking moves a running panel; the user's rules must survive it")
+                .doesNotContain("restoreOpeningState")
+                .doesNotContain("closePanel");
+        // The window-hidden handler fires for both, which is what the flag is for.
+        assertThat(methodBody(extension, "private void attachToWindow()"))
+                .as("a hide that is a re-parenting step must not be read as a close")
+                .contains("if (!reparenting)");
+
+        assertThat(methodBody(extension, "private void installShutdownGuard()"))
+                .as("quitting with the panel open is a close, and the only one the panel "
+                        + "cannot see for itself")
+                .contains("closePanel()");
+    }
+
+    /** @return how many times {@code needle} appears in {@code text}. */
+    private static int occurrences(String text, String needle) {
+        int count = 0;
+        int from = 0;
+        while (true) {
+            int at = text.indexOf(needle, from);
+            if (at < 0) {
+                return count;
+            }
+            count++;
+            from = at + needle.length();
+        }
+    }
+
+    /**
+     * @param source a Java source file
+     * @param signature the method signature, up to and excluding the opening brace
+     * @return the body of that method, with string literals blanked so a brace inside one -- the
+     *         {@code "{}"} of every SLF4J call -- cannot unbalance the scan
+     */
+    private static String methodBody(String source, String signature) {
+        String blanked = source.replaceAll("\\\\.", "..").replaceAll("\"(\\\\.|[^\"])*\"", "\"\"");
+        int start = blanked.indexOf(signature);
+        assertThat(start).as("method %s must exist", signature).isNotNegative();
+        int open = blanked.indexOf('{', start);
+        int depth = 0;
+        for (int i = open; i < blanked.length(); i++) {
+            char c = blanked.charAt(i);
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    return blanked.substring(open, i + 1);
+                }
+            }
+        }
+        throw new AssertionError("unbalanced braces after " + signature);
+    }
+
     @Test
     void everySourceFileIsPureAscii() throws IOException {
         List<String> violations = new ArrayList<>();

@@ -58,6 +58,7 @@ import qupath.ext.classvisibility.core.ClassVisibilityController;
 import qupath.ext.classvisibility.core.VisibilityPreset;
 import qupath.ext.classvisibility.core.VisibilityPresetStore;
 import qupath.ext.classvisibility.core.VisibilityRuleModel;
+import qupath.ext.classvisibility.core.VisibilitySnapshot;
 import qupath.ext.classvisibility.core.VisibilityStateStore;
 import qupath.ext.classvisibility.preferences.ClassVisibilityPreferences;
 import qupath.fx.dialogs.Dialogs;
@@ -260,6 +261,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private boolean userChangedRules = false;
 
     /**
+     * The state QuPath was in when this panel opened, replayed in full when it closes.
+     *
+     * <p>The panel is a session: it hides every object as it opens, and closing it puts the user
+     * back exactly where they were (user, 2026-08-28). Without this, opening the panel silently
+     * discarded whatever class rules the user already had -- recoverable only through a menu item
+     * they had to know about first.</p>
+     *
+     * <p>The same instance {@link VisibilityStateStore} keeps for the session, so the panel's
+     * replay and the on-demand <i>Restore the state from when the panel opened</i> can never
+     * disagree about what "before" was.</p>
+     */
+    private VisibilitySnapshot openingSnapshot;
+
+    /**
      * The halo drawn on <i>Check all listed</i> while every object is hidden. One instance, one
      * button: a JavaFX {@code Effect} is attached to a node, so it is not shared.
      */
@@ -315,17 +330,22 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * right way round for the multiplexed case -- with thirty overlapping classes on screen there
      * is nothing to see until most of them are gone.</p>
      *
-     * <p>Three things make it safe rather than alarming. The automatic snapshot is taken first,
-     * so <i>Restore the state from when the panel opened</i> can put back whatever the user had. The status strip says
+     * <p>Three things make it safe rather than alarming. The snapshot is taken first, and it is
+     * replayed in full when the panel closes -- so this is a door the user can walk back out of,
+     * not a one-way trade of the rules they had for the ones they are about to set
+     * ({@link #restoreOpeningState()}); the same snapshot also backs <i>Restore the state from
+     * when the panel opened</i> while the panel is still up. The status strip says
      * <b>[!] Every object is hidden</b> in words the moment it happens, with <i>Switch to "Hide
      * checked classes"</i> and <i>Reset all</i> beside it, and <i>Check all listed</i> is haloed
-     * as the way back. And the close guard undoes the mode on the way out, so a user who never
-     * checks anything is returned exactly where they started (finding R2).</p>
+     * as the way back. And the close guard still runs after the restore, for the case where the
+     * state being put back is itself the everything-hidden pair (finding R2).</p>
      */
     private void applyOpeningState() {
         // Replace the snapshot rather than keeping an older one, so "Restore the state from when
-        // the panel opened" is literally true on the second opening as well as the first.
-        VisibilityStateStore.capture(options);
+        // the panel opened" is literally true on the second opening as well as the first. The
+        // returned instance is held here too: closing the panel replays it, and holding the one
+        // object keeps the close replay and the on-demand restore from ever diverging.
+        openingSnapshot = VisibilityStateStore.capture(options);
         beforeMutation();
         soloedClass = null;
         soloedComponent = null;
@@ -427,13 +447,97 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     }
 
     /**
+     * Put back everything the panel found when it opened. Called from every close path.
+     *
+     * <p><b>The panel is a session</b> (user, 2026-08-28). It hides every object the moment it
+     * opens, and until 0.1.1 that discarded whatever class rules the user already had -- a
+     * one-way door out of a view they may have spent minutes building, with the way back on a
+     * menu item they had to know existed. Closing the panel now restores the whole snapshot:
+     * rules, mode, exact flag, object predicate, opacity, cell display mode and the per-type
+     * show/fill booleans. QuPath ends up exactly where the user left it before pressing the
+     * button.</p>
+     *
+     * <p><b>Not called when the panel is re-parented.</b> Docking and undocking move the same
+     * panel between surfaces; the session continues and the user's rules must survive the move.
+     * That is why this lives on the close path in
+     * {@code ClassVisibilityExtension.closePanel()} and nowhere else.</p>
+     *
+     * @return the outcome, which decides what the caller tells the user
+     */
+    public RestoreOutcome restoreOpeningState() {
+        return restoreQuietly(openingSnapshot, options);
+    }
+
+    /**
+     * Whether the class rules in force right now are the ones the panel opened onto.
+     *
+     * @return true when the rule set, mode and exact flag all match the opening snapshot
+     */
+    public boolean matchesOpeningState() {
+        return openingSnapshot != null && openingSnapshot.matchesRules(options);
+    }
+
+    /**
+     * Replay a snapshot without ever throwing, as a static so it can be tested against options
+     * that fail mid-restore.
+     *
+     * <p>This runs during QuPath's quit sequence, inside an event filter that fires before
+     * {@code PathPrefs.savePreferences()}. An exception escaping here would propagate into
+     * QuPath's close handling and could refuse the user their quit -- so a failed restore is a
+     * logged, reported failure, never a thrown one. Same discipline as the shutdown
+     * notification, and for the same reason.</p>
+     *
+     * @param snapshot the snapshot to replay; may be null
+     * @param options the options to write
+     * @return {@code RESTORED}, {@code FAILED}, or {@code NOTHING_TO_RESTORE} when there was no
+     *         snapshot to replay
+     */
+    static RestoreOutcome restoreQuietly(VisibilitySnapshot snapshot, OverlayOptions options) {
+        if (snapshot == null) {
+            // Only reachable if the panel's own constructor did not finish, which is why it is
+            // reported rather than treated as "nothing to do": the caller has to know that the
+            // user was NOT put back.
+            logger.warn("Class visibility: no opening snapshot to restore on close");
+            return RestoreOutcome.NOTHING_TO_RESTORE;
+        }
+        try {
+            snapshot.restore(options);
+            logger.info("Restored the visibility state the Class visibility panel opened onto");
+            return RestoreOutcome.RESTORED;
+        } catch (RuntimeException ex) {
+            logger.warn("Could not restore the visibility state the panel opened onto: {}",
+                    ex.getMessage(), ex);
+            return RestoreOutcome.FAILED;
+        }
+    }
+
+    /** What {@link #restoreOpeningState()} managed to do. */
+    public enum RestoreOutcome {
+        /** The snapshot was replayed. */
+        RESTORED,
+        /** A snapshot existed and replaying it threw; the user is somewhere they did not choose. */
+        FAILED,
+        /** There was no snapshot -- the panel never finished opening. */
+        NOTHING_TO_RESTORE
+    }
+
+    /**
      * The ratified R2 guard. If the mode is "show only checked classes" and nothing is checked,
      * every object in every image is hidden -- and because QuPath persists the mode but not the
      * set, that state comes back at the next launch with the panel closed and no visible cause.
      *
-     * <p>Fires at tab removal and at QuPath shutdown only, never while the panel is installed:
-     * while it is installed the state is one click from visible and the user may be one click
-     * from checking the class they were reaching for.</p>
+     * <p>Fires when the panel closes and at QuPath shutdown only, never while the panel is
+     * installed: while it is installed the state is one click from visible and the user may be
+     * one click from checking the class they were reaching for.</p>
+     *
+     * <p><b>Still needed after the close restore, in three cases.</b> Closing the panel now
+     * replays the opening snapshot, so our own opening state can no longer be what is left
+     * behind -- but the guard can still fire on (a) a user who already had "show only checked
+     * classes" with nothing checked before they opened the panel, set from QuPath's own class
+     * list, which the restore faithfully puts back; (b) a restore that failed or had no
+     * snapshot; and (c) the startup reconciliation after a crash, where no close of ours ever
+     * ran. Cases (a) and (c) are the ones that would otherwise come back as an empty viewer at
+     * the next launch, and neither is reachable by the restore.</p>
      *
      * @return true when the guard changed the mode, so the caller can say so
      */

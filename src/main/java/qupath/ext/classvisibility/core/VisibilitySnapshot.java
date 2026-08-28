@@ -34,13 +34,19 @@ import java.util.function.Predicate;
  * than a record for exactly that reason -- adding a component to a record changes its canonical
  * constructor, and these snapshots are held across a session.
  *
- * <p><b>Opacity has a shorter lifetime than everything else here</b> (user, 2026-08-27): when
- * per-group opacity ships it is to be dialog-scoped and cleared when the panel closes, not left
- * behind. So it needs a snapshot taken at panel <i>open</i> and replayed at panel <i>close</i> --
- * a different lifetime from this type's other use, which is a session-scoped recovery point the
- * user restores on demand. Expect two instances with different lifetimes rather than one field
- * bolted onto the existing one, and do not wire opacity into
- * {@code VisibilityStateStore.captureIfAbsent}.</p>
+ * <h2>Two lifetimes, one capture</h2>
+ * <p>A snapshot taken at panel open is read twice. {@link VisibilityStateStore} holds it for the
+ * session, for the on-demand <i>Restore the state from when the panel opened</i> actions; the
+ * panel holds the same instance and replays it when it closes, because closing the panel ends a
+ * session and puts QuPath back where the user left it (user, 2026-08-28). Both read the one
+ * object {@code VisibilityStateStore.capture} returns, so the two can never disagree about what
+ * "before" was.</p>
+ *
+ * <p>That is also the answer to the opacity question (user, 2026-08-27): when per-group opacity
+ * ships it is to be cleared when the panel closes rather than left behind, which is exactly the
+ * close replay above -- {@code opacity} is already a field here and already restored. What must
+ * not happen is opacity being wired into {@code VisibilityStateStore.captureIfAbsent}, whose
+ * snapshot is taken lazily at the first change rather than at open.</p>
  */
 public final class VisibilitySnapshot {
 
@@ -143,5 +149,24 @@ public final class VisibilitySnapshot {
     /** @return the class visibility mode this snapshot holds. */
     public OverlayOptions.ClassVisibilityMode visibilityMode() {
         return visibilityMode;
+    }
+
+    /**
+     * Whether the supplied options currently hold exactly the class rules this snapshot does.
+     *
+     * <p>The three fields compared are the ones that decide what is hidden <i>by class</i>: the
+     * rule set, the mode acting on it, and the exact-match flag. Deliberately not the whole
+     * snapshot -- this answers "are the rules in force the ones we just put back", which is what
+     * decides whether telling the user that rules are still in force would be news or noise. A
+     * user who moved the opacity slider before opening the panel has that opacity back either
+     * way, and it is not a class rule.</p>
+     *
+     * @param options the options to compare against
+     * @return true when the rule set, mode and exact flag all match
+     */
+    public boolean matchesRules(OverlayOptions options) {
+        return selectedClasses.equals(new LinkedHashSet<>(options.selectedClassesProperty()))
+                && visibilityMode == options.getSelectedClassVisibilityMode()
+                && useExactSelectedClasses == options.getUseExactSelectedClasses();
     }
 }

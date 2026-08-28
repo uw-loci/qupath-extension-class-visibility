@@ -49,12 +49,20 @@ public final class VisibilityStateStore {
      * the panel and opened it again -- which hides everything -- wants their way back to be that
      * view, not to whatever the session started with an hour earlier.</p>
      *
+     * <p>The snapshot is <b>returned</b> as well as stored, because it has two readers with two
+     * lifetimes. This store keeps it for the session, for the on-demand <i>Restore the state from
+     * when the panel opened</i> actions. The panel keeps the same instance for as long as it is
+     * open and replays it when it closes, which is what makes the panel a session the user can
+     * back out of. One capture, so the two can never disagree about what "before" was.</p>
+     *
      * @param options the options to snapshot
+     * @return the snapshot just taken, for a caller that needs to hold on to this one
      */
-    public static synchronized void capture(OverlayOptions options) {
+    public static synchronized VisibilitySnapshot capture(OverlayOptions options) {
         snapshot = VisibilitySnapshot.capture(options);
         logger.info("Captured visibility snapshot at panel open ({} class rules, mode {})",
                 snapshot.selectedClasses().size(), snapshot.visibilityMode());
+        return snapshot;
     }
 
     /**

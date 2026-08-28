@@ -3,7 +3,7 @@
 Show or hide QuPath objects by class, or by one component of a class name, from a floating
 panel you can dock into QuPath's analysis pane.
 
-A QuPath 0.7 extension, version 0.1.1. It is a port of the community Groovy script
+A QuPath 0.7 extension, version 0.1.2. It is a port of the community Groovy script
 *"Show specific classes of objects v3"* ([image.sc topic 31828](https://forum.image.sc/t/31828)),
 which stopped working when `OverlayOptions.hiddenClassesProperty()` was removed.
 
@@ -124,7 +124,7 @@ one click on it puts every listed class back; and `Switch to "Hide checked class
 brightness/contrast button, and it is drawn as an **eye**, slashed whenever classes are being
 hidden -- the same vocabulary QuPath's own class list uses for showing and hiding. Installing this extension adds nothing to your
 analysis pane -- that pane already has five tabs, and you should not get a sixth just for
-installing something. **Extensions > Class visibility > Show panel** does the same.
+installing something. **Extensions > Class Visibility > Show panel** does the same.
 
 If you would rather have it docked, click **Dock as tab** at the top right of the panel, and
 **Undock to window** to send it back. Both moves keep everything you have set -- your rules,
@@ -132,7 +132,7 @@ the filter you typed, the sort you chose. Moving the panel is not closing it, so
 restored and no work is undone. Once docked, QuPath's own drag-the-tab-out gesture works too.
 
 Right-click the toolbar button for those two moves plus *Restore the state from when the panel
-opened*, a full reset, and help; **Extensions > Class visibility** carries the same items, so
+opened*, a full reset, and help; **Extensions > Class Visibility** carries the same items, so
 none of it is lost if the toolbar button fails to appear. The button itself closes the panel
 when it is already in front; its tooltip says which of open, raise or close the next click
 will do, and then how many class rules are in force.
@@ -169,7 +169,7 @@ being hidden, and in the one state where every object is invisible it offers a b
 puts it right in a single click.
 
 There are two ways back, and both are in **two** places -- the toolbar button's right-click
-menu and **Extensions > Class visibility** -- because toolbar insertion is best-effort and a
+menu and **Extensions > Class Visibility** -- because toolbar insertion is best-effort and a
 recovery route with one door is the wrong design. Neither needs the panel open:
 
 1. **`Reset all`** in the panel, or **Reset all visibility** in either menu. Both clear every

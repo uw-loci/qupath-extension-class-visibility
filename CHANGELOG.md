@@ -4,6 +4,71 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.1.2
+
+A layout fix for something users could see, and one small addition. Nothing about how the
+panel behaves has changed -- if you are on 0.1.1, nothing here needs reading before you
+upgrade.
+
+- **The preset row no longer collapses into a line of ellipses.** In the docked tab the whole
+  row rendered as `...` `[combo]` `...` `...` -- the `Preset:` label and the `Save` and
+  `Delete` buttons each reduced to three dots, with `Undock to window` truncated beside them,
+  at a panel width that was not remotely tight. Widening the panel did not help, which is the
+  tell that this was never about running out of room.
+
+  The cause was one control asking for too much and the rest paying for it. A `ComboBox` takes
+  its *preferred* width from its contents, and the preset combo's empty-state prompt was the
+  long string `(no presets saved in this project)`. So the row asked for more width than the
+  pane had, and an `HBox` settles that by shrinking every child toward its **minimum** -- which,
+  for a label or a button, is an ellipsis. The one control that should have given the width up
+  was the only one that would not.
+
+  Fixed in the three places that were wrong, in that causal order: controls whose label *is*
+  the control -- the preset label and its two buttons, the dock and help buttons, the filter
+  row's labels and buttons, the two bulk buttons -- now refuse to be squeezed below their own
+  text; the preset combo takes its preferred width from the layout rather than from whatever
+  text happens to be in it, while still being the first to give width up when the row really is
+  tight; and the empty-state prompt is now the short **`(no presets yet)`**. The explanation it
+  used to carry is in the combo's tooltip, where it does not set a layout.
+
+  The audit that found it also gave `Include classes with no objects here` wrapping text -- it
+  is a sentence, and pinning it on one line would have set the minimum width of the whole class
+  pane.
+
+- **The `Any` / `All` control draws attention to itself the first time it applies.** Below two
+  checked components that control does nothing, and says so: its label reads
+  `Checked components combine as: (check two or more)`. The moment a second component is
+  checked is therefore the only moment at which it can be connected to an effect you just
+  caused -- so at that moment the label and its two radios now glow gently for about five
+  seconds.
+
+  It is a **slow pulse** -- three swells over five seconds, the same blue halo `Check all
+  listed` already uses -- and the rate is the point: at 0.6 Hz it is well under the three
+  flashes per second above which blinking content is an accessibility hazard. It is emphasis
+  and nothing else; the label beside it states the rule in words, and nothing is encoded in the
+  motion or the colour alone. It cannot intercept a click and does not touch focus.
+
+  It fires **once per QuPath session**, in memory only, so a fresh launch teaches it again and
+  reopening the panel -- routine here, since opening hides every object -- does not. It stops
+  the moment it stops pointing at anything: clicking either radio, the checked count dropping
+  back below two, switching image, or the panel leaving the screen.
+
+  **It can be switched off**, in **Extensions > Class Visibility >
+  `Highlight the Any / All choice when it first applies`**, which is on by default. Some people
+  find motion unpleasant, and JavaFX offers no reduced-motion signal from the operating system
+  to honour on their behalf. The setting persists; the once-per-session showing does not.
+
+- 118 unit tests, up from 105: `CombinationHintTest` covers the crossing to two, the session
+  latch, the preference gate and the cancel, all without a JavaFX toolkit; two structural
+  additions to `SourceDisciplineTest` pin the pulse's stop call sites, require every control in
+  a shrinkable row to be either protected or a declared absorber -- so a control added later
+  cannot inherit the ellipsis defect -- and pin the preset combo's preferred width.
+
+**Not verified.** Still built and tested on Linux only, and neither change here has been
+exercised on macOS or Windows. The layout fix is pinned by structural tests rather than by
+rendering, because rendering needs a running toolkit -- see *Reporting a problem* in the
+[README](README.md).
+
 ## 0.1.1
 
 **A behaviour change, and the reason for this release.** 0.1.0 is out and installed, so read

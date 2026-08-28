@@ -95,7 +95,7 @@ Four things make it recoverable rather than alarming:
   which ends the state;
 - **the whole view you had was recorded on the way in**, and
   `Restore the state from when the panel opened` -- on the toolbar button's right-click menu
-  and under `Extensions > Class visibility` -- puts it back. See
+  and under `Extensions > Class Visibility` -- puts it back. See
   [If everything disappears](#if-everything-disappears).
 
 **Opening the panel also clears any class rules that were already in force**, including rules
@@ -120,7 +120,7 @@ whether you did anything at all.
 |---|---|
 | The floating window's own close button | yes |
 | Pressing the toolbar button while the panel is in front | yes |
-| `Hide panel` on the toolbar button's menu, or on **Extensions > Class visibility** | yes |
+| `Hide panel` on the toolbar button's menu, or on **Extensions > Class Visibility** | yes |
 | A docked panel, closed by any of those three -- a docked tab has no close button of its own | yes |
 | Quitting QuPath with the panel open | yes |
 | **`Dock as tab` and `Undock to window`** | **no, and deliberately** -- see below |
@@ -160,7 +160,7 @@ Two ways in, both reaching the same single panel:
 
 - **The toolbar button**, immediately right of brightness/contrast and drawn as an **eye**.
   It opens the panel as a floating window over QuPath.
-- **Extensions > Class visibility > Show panel**, which does the same thing. Use this if the
+- **Extensions > Class Visibility > Show panel**, which does the same thing. Use this if the
   toolbar button did not appear (see [Troubleshooting](#troubleshooting)).
 
 Once the panel is open you can **dock it as a tab** in the analysis pane, alongside Project,
@@ -358,7 +358,7 @@ tab inside a collapsed pane is invisible. If the panel disappeared shortly after
 it, check that first.
 
 **You do not have to expand it yourself.** Pressing the toolbar button, or choosing
-**Extensions > Class visibility > Show panel**, expands a collapsed analysis pane before
+**Extensions > Class Visibility > Show panel**, expands a collapsed analysis pane before
 selecting the tab. The same happens when you dock the panel while the pane is collapsed. The
 one thing that will not bring it back is expecting the tab to be visible in a pane you
 collapsed by hand and did not reopen.
@@ -638,6 +638,20 @@ they got more (or fewer) cells than they expected.
 The control is labelled **`Checked components combine as:`**, and its label spells out the
 current choice as you go, e.g. `All -- CD3 and CD8 together`.
 
+**The first time it applies in a session, it glows.** Because the control is inert below two
+components, the moment you check a second one is the only moment at which it can be connected
+to something you just did -- so at that moment the label and its two radios pulse gently for
+about five seconds. It is a slow swell rather than a blink, three cycles over the five
+seconds, and it carries no information of its own: the label beside it states the rule in
+words, as it always does.
+
+It happens **once per QuPath session** -- a fresh launch teaches it again, closing and
+reopening the panel does not -- and it stops early if you click either radio or the checked
+count drops back below two. If you would rather it did not happen at all, untick
+**`Highlight the Any / All choice when it first applies`** in
+**Extensions > Class Visibility**. That setting is on by default and is remembered across
+restarts.
+
 ### `Any` -- "any of these"
 
 A class matches if it contains **any** of the checked components. This is what the original
@@ -909,7 +923,7 @@ completely blank viewer, but it is not the only one.
 
 If you would rather not work through them one at a time,
 **`Restore the state from when the panel opened`** covers all of them at once -- see below. It
-is on the toolbar button's right-click menu and under **Extensions > Class visibility**, and
+is on the toolbar button's right-click menu and under **Extensions > Class Visibility**, and
 neither route needs the panel open.
 
 ### Two ways back, and they are not the same
@@ -929,7 +943,7 @@ first, so `Undo` will bring your rules back if you did not mean it.
 **2. `Restore the state from when the panel opened` -- go back to the state you had.**
 
 Right-click the toolbar button (or click its arrow), or open **Extensions > Class
-visibility**, and choose **`Restore the state from when the panel opened`**. This restores a
+Visibility**, and choose **`Restore the state from when the panel opened`**. This restores a
 recorded snapshot rather than resetting to defaults -- so it puts back the state you *had*,
 not the state QuPath ships with.
 
@@ -1071,10 +1085,10 @@ keeping, save it as a [preset](#presets-a-view-you-named). See
 
 <details><summary><strong>The two menus</strong></summary>
 
-## Two menus, and everything is in both
+## Two menus, and every recovery action is in both
 
 The recovery actions live in **two** places, deliberately: the toolbar button's right-click
-menu, and **Extensions > Class visibility**. Toolbar insertion is best-effort -- the panel
+menu, and **Extensions > Class Visibility**. Toolbar insertion is best-effort -- the panel
 does not control QuPath's layout and the button can fail to appear -- and a recovery route
 whose only door is the component most likely to be missing is the wrong design. Whichever you
 reach for, the items are the same:
@@ -1096,6 +1110,14 @@ go back to, so it never looks like a route that failed.
 There is no `Save visibility state` on these menus. The single manual save slot it used to
 offer has been replaced by named presets in the panel header, which are saved in the project
 rather than for the session -- see [Presets: a view you named](#presets-a-view-you-named).
+
+**One item is on the Extensions menu only**, and deliberately:
+`Highlight the Any / All choice when it first applies`, a tickbox that switches off the
+five-second glow described in
+[Combining components](#combining-components-any-and-all). It is a preference, not a recovery
+action, and the toolbar button's menu is the recovery route -- mixing a setting into it would
+dilute what that menu is for. It is not in the panel either, where a permanent tickbox would
+be lasting clutter bought for a hint that fires once a session.
 
 **Either gesture opens the toolbar menu.** Right-click anywhere on the button, or left-click
 the small triangle at its bottom-right corner. The triangle is a marker rather than a target
@@ -1162,7 +1184,7 @@ panel that writes anything into your project -- see
 **No project, no presets.** With no project open the combo reads `(no project open)` and both
 buttons are disabled; the combo itself stays clickable so that its tooltip can say why and
 name the way out -- `File > Project > Create project`. With a project open and nothing saved
-yet, it reads `(no presets saved in this project)`.
+yet, it reads `(no presets yet)`.
 
 ### A preset is not the recovery route
 
@@ -1468,7 +1490,7 @@ panel's own. An ordinary close restores your view and says nothing.
 
 If you are about to hand the screen, a screenshot or an image export to anyone else, **glance
 at the toolbar button: a slashed eye means a filter is on.** Hover it for the count, and either
-note what is in force or clear it with **Extensions > Class visibility > Reset all
+note what is in force or clear it with **Extensions > Class Visibility > Reset all
 visibility**, which does not need the panel open.
 
 ### Screenshots and rendered exports carry the filter; measurements do not
@@ -1532,6 +1554,7 @@ difference decides what comes back after a restart.
 | Which classes are checked (your rules) | QuPath | **no** -- cleared when the panel opens, and put back when it closes | global for the session |
 | Saved presets | the panel | **yes**, in the project | one set per project, shared with anyone who opens it |
 | `Any` / `All` | the panel | yes | the panel |
+| `Highlight the Any / All choice when it first applies` | the panel | yes | one machine, every project |
 | `List` scope | the panel | yes | the panel |
 | `Auto-refresh counts` | the panel | yes | the panel |
 | Divider position between the two lists | the panel | yes | separately for the wide and narrow layouts |
@@ -1548,6 +1571,10 @@ panel takes when it opens**. It lives for as long as QuPath does, is replaced on
 and is replayed when the panel closes -- see
 [Closing the panel puts your view back](#closing-the-panel-puts-your-view-back). Nothing about
 it survives a restart, and nothing about it is written to disk.
+
+**The `Any` / `All` glow keeps its setting but not its memory.** Whether the hint is switched
+on is a saved preference, in that table. Whether it has already fired is not: that is held for
+as long as QuPath runs and no longer, so the next launch shows it once more.
 
 There is one more, with no control anywhere in the panel: the **80% threshold** at which a
 component's spread ratio is shown in bold is a saved preference
@@ -1609,7 +1636,7 @@ installed that pair is reset at startup, so it should not survive from a previou
 which makes a class rule set during this one, or something that is not about classes at all,
 the likelier culprit. See [If everything disappears](#if-everything-disappears), and note that
 `Restore the state from when the panel opened` -- on the toolbar button's right-click menu and
-in **Extensions > Class visibility** -- covers the non-class causes too, and does not need the
+in **Extensions > Class Visibility** -- covers the non-class causes too, and does not need the
 panel to be open.
 
 **I get more cells than I expected.**
@@ -1647,7 +1674,7 @@ annotations or every object will not agree with it. Also check whether
 `Auto-refresh counts` is off -- the column header reads `Count (stale)` when it is.
 
 **The toolbar button is missing.**
-Toolbar insertion is best-effort, and nothing depends on it. **Extensions > Class visibility**
+Toolbar insertion is best-effort, and nothing depends on it. **Extensions > Class Visibility**
 carries every item the button's menu does -- `Show panel`, `Restore the state from when the
 panel opened`, `Reset all visibility` and `Help` -- so the recovery routes are still
 there. What you lose is the at-a-glance signal: the button's slashed eye and its tooltip are
@@ -1657,7 +1684,7 @@ an issue -- it is not expected.
 
 **I cannot find the panel at all.**
 The extension deliberately adds nothing until you ask for it -- there is no tab and no window
-until you press the toolbar button or choose **Extensions > Class visibility > Show panel**.
+until you press the toolbar button or choose **Extensions > Class Visibility > Show panel**.
 If you had already docked it, it is a tab in the analysis pane, and that whole pane can be
 collapsed (**View > Show analysis pane**).
 

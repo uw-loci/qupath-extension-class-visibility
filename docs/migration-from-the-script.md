@@ -78,7 +78,7 @@ Two things the script did not have:
   cell display and the object-type toggles, all as they were. Whatever the panel did to your
   view lasts exactly as long as the panel is open. `Restore the state from when the panel
   opened` -- on the toolbar button's right-click menu and under
-  `Extensions > Class visibility` -- replays the same record without closing the panel.
+  `Extensions > Class Visibility` -- replays the same record without closing the panel.
 
 One caution the script shared and this extension is careful about: the mode is saved across a
 QuPath restart while your ticks are not, so `Show only checked classes` plus an empty set is

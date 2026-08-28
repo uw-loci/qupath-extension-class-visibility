@@ -3,6 +3,7 @@ package qupath.ext.classvisibility.ui;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyStringProperty;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -22,6 +23,7 @@ import javafx.scene.control.RadioButton;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TitledPane;
@@ -36,6 +38,7 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -46,6 +49,7 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
+import javafx.util.StringConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.classvisibility.core.ClassCensus;
@@ -175,6 +179,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final CheckBox autoRefreshCheck = new CheckBox(Strings.get("check.autoRefresh"));
     private final CheckBox includeEmptyCheck = new CheckBox(Strings.get("check.includeEmpty"));
     private final ComboBox<ClassHarvester.Scope> scopeCombo = new ComboBox<>();
+    /**
+     * How QuPath draws cells. The one control in this panel that has nothing to do with classes:
+     * it is QuPath's own {@code View -> Cell display}, put where the user is already looking.
+     */
+    private final ComboBox<OverlayOptions.DetectionDisplayMode> cellDisplayCombo = new ComboBox<>();
     private final TextField findField = new TextField();
     private final Button clearFindButton = new Button(Strings.get("button.findClear"));
     private final Button refreshButton = new Button(Strings.get("button.refresh"));
@@ -190,6 +199,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final Button uncheckAllButton = new Button(Strings.get("button.uncheckAllListed"));
 
     private final Label modeLabel = new Label(Strings.get("label.mode"));
+    private final Label cellDisplayLabel = new Label(Strings.get("label.cellDisplay"));
     private final Label scopeLabel = new Label(Strings.get("label.scope"));
     private final Label findLabel = new Label(Strings.get("label.find"));
     private final HBox imageRow = new HBox(6);
@@ -198,7 +208,18 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final HBox exactWarningBox = new HBox(6);
     private final HBox statusButtons = new HBox(6);
     private final VBox modeBox = new VBox(2);
+    private final VBox cellDisplayBox = new VBox(2);
     private final HBox modeRow = new HBox(12);
+    /**
+     * Holds the visibility-rule group and the cell-display group side by side.
+     *
+     * <p>A {@link FlowPane} rather than an {@code HBox} because the request was to use the empty
+     * space beside the radios, and how much space that is depends on the surface: a docked tab is
+     * narrow, an undocked window is whatever the user dragged it to. FlowPane puts the two groups
+     * side by side when they fit and wraps the second onto its own line when they do not, which
+     * is the behaviour without a width threshold of our own to get wrong.</p>
+     */
+    private final FlowPane modeAndDisplayRow = new FlowPane(16, 4);
     private final VBox filterBox = new VBox(4);
     private final HBox filterRow = new HBox(8);
     private final VBox classButtons = new VBox(4);
@@ -226,6 +247,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      */
     private final DropShadow everythingHiddenHalo = new DropShadow(BlurType.GAUSSIAN,
             EVERYTHING_HIDDEN_HALO_COLOR, 10, 0.6, 0, 0);
+
+    /** Held so {@link #dispose()} can detach them from the session-lived shared options. */
+    private ChangeListener<OverlayOptions.ClassVisibilityMode> modeListener;
+    private ChangeListener<Boolean> exactListener;
 
     private UndoEntry undoSlot;
     private PathClass soloedClass;
@@ -351,9 +376,27 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         findField.requestFocus();
     }
 
-    /** Detach every listener. Called when the tab is removed and at QuPath shutdown. */
+    /**
+     * Detach every listener. Called when the tab is removed and at QuPath shutdown.
+     *
+     * <p>The three detachments below are not tidiness. {@code OverlayOptions.getSharedInstance()}
+     * lives for the whole QuPath session, so anything of ours still listening to it keeps this
+     * pane -- its tables, its rows, its census -- reachable forever. The panel is now opened and
+     * closed routinely rather than once (it hides everything on open, so closing it is a normal
+     * move), and each cycle builds a new pane, so a retained one is a leak per cycle rather than
+     * a curiosity. The two mode listeners were retained this way before the combo existed.</p>
+     */
     public void dispose() {
         controller.uninstall();
+        cellDisplayCombo.valueProperty().unbindBidirectional(options.detectionDisplayModeProperty());
+        if (modeListener != null) {
+            options.selectedClassVisibilityModeProperty().removeListener(modeListener);
+            modeListener = null;
+        }
+        if (exactListener != null) {
+            options.useExactSelectedClassesProperty().removeListener(exactListener);
+            exactListener = null;
+        }
     }
 
     /**
@@ -433,6 +476,23 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
         scopeCombo.getItems().setAll(ClassHarvester.Scope.values());
         scopeCombo.setTooltip(new Tooltip(Strings.get("tooltip.scope")));
+
+        cellDisplayCombo.getItems().setAll(OverlayOptions.DetectionDisplayMode.values());
+        cellDisplayCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(OverlayOptions.DetectionDisplayMode mode) {
+                return mode == null ? "" : cellDisplayLabelFor(mode);
+            }
+
+            @Override
+            public OverlayOptions.DetectionDisplayMode fromString(String text) {
+                // Not editable, so this is never called; returning null beats inventing a parse.
+                return null;
+            }
+        });
+        cellDisplayCombo.setTooltip(new Tooltip(Strings.get("tooltip.cellDisplay")));
+        cellDisplayCombo.setAccessibleText(Strings.get("label.cellDisplay"));
+        cellDisplayLabel.setLabelFor(cellDisplayCombo);
         findField.setPromptText(Strings.get("prompt.find"));
         findField.setTooltip(new Tooltip(Strings.get("tooltip.find")));
         HBox.setHgrow(findField, Priority.ALWAYS);
@@ -455,7 +515,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         scopeRow.setAlignment(Pos.CENTER_LEFT);
         filterRow.setAlignment(Pos.CENTER_LEFT);
 
-        VBox header = new VBox(4, imageRow, modeBox, exactWarningBox, filterBox);
+        VBox header = new VBox(4, imageRow, modeAndDisplayRow, exactWarningBox, filterBox);
         header.setPadding(new Insets(0, 0, 6, 0));
         setTop(header);
 
@@ -497,15 +557,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         checkColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         checkColumn.setCellFactory(col -> new ClassCheckCell());
 
-        TableColumn<ClassRow, ClassRow> onlyColumn = new TableColumn<>();
-        onlyColumn.setPrefWidth(52);
-        onlyColumn.setMinWidth(52);
-        onlyColumn.setMaxWidth(52);
-        onlyColumn.setSortable(false);
-        onlyColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
-        onlyColumn.setCellFactory(col -> new ClassOnlyCell());
-        onlyColumn.setGraphic(headerLabel(Strings.get("column.only"), Strings.get("tooltip.column.only")));
-
         TableColumn<ClassRow, ClassRow> nameColumn = new TableColumn<>(Strings.get("column.class"));
         nameColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         nameColumn.setCellFactory(col -> new ClassNameCell());
@@ -541,8 +592,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         affectsColumn.setId(AFFECTS_COLUMN_ID);
         affectsColumn.setGraphic(headerLabel(Strings.get("column.affects"), Strings.get("tooltip.column.affects")));
 
-        classTable.getColumns().setAll(List.of(checkColumn, onlyColumn, nameColumn, countColumn,
+        // No "Only" column. It cost 52px of a column in which "FoxP3 (Opal 570): 1+: ..." was
+        // already being cut off, to save one click -- and once checking a row means "show this"
+        // rather than "hide this", solo is no longer a different KIND of operation, just a faster
+        // one. It survives as a double-click, a right-click item and the O key.
+        classTable.getColumns().setAll(List.of(checkColumn, nameColumn, countColumn,
                 affectsColumn));
+        installSoloGestures(classTable, ClassRow::displayName, this::soloClass);
         // Dropped when the class names would otherwise have nothing left, and recoverable from
         // the table's own column menu.
         classTable.widthProperty().addListener((obs, oldValue, newValue) ->
@@ -592,15 +648,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         checkColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         checkColumn.setCellFactory(col -> new ComponentCheckCell());
 
-        TableColumn<ComponentRow, ComponentRow> onlyColumn = new TableColumn<>();
-        onlyColumn.setPrefWidth(52);
-        onlyColumn.setMinWidth(52);
-        onlyColumn.setMaxWidth(52);
-        onlyColumn.setSortable(false);
-        onlyColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
-        onlyColumn.setCellFactory(col -> new ComponentOnlyCell());
-        onlyColumn.setGraphic(headerLabel(Strings.get("column.only"), Strings.get("tooltip.column.only")));
-
         TableColumn<ComponentRow, ComponentRow> nameColumn = new TableColumn<>();
         nameColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         nameColumn.setCellFactory(col -> new ComponentNameCell());
@@ -631,7 +678,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.count")));
         countColumn.setGraphic(countHeader);
 
-        componentTable.getColumns().setAll(List.of(checkColumn, onlyColumn, nameColumn, spreadColumn, countColumn));
+        componentTable.getColumns().setAll(List.of(checkColumn, nameColumn, spreadColumn, countColumn));
+        installSoloGestures(componentTable, ComponentRow::name, this::soloComponent);
         componentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         componentTable.setTableMenuButtonVisible(true);
         componentTable.setMinHeight(120);
@@ -811,6 +859,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
         modeRow.getChildren().setAll(hideRadio, showOnlyRadio);
         modeBox.getChildren().setAll(modeLabel, modeRow, exactCheck);
+        cellDisplayBox.getChildren().setAll(cellDisplayLabel, cellDisplayCombo);
+        modeAndDisplayRow.getChildren().setAll(modeBox, cellDisplayBox);
+        cellDisplayCombo.setMaxWidth(Region.USE_COMPUTED_SIZE);
 
         scopeRow.getChildren().setAll(scopeLabel, scopeCombo);
         findRow.getChildren().setAll(findLabel, findField, clearFindButton);
@@ -832,6 +883,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // stacking and ellipsis-with-tooltip on long names.
         modeRow.getChildren().clear();
         modeBox.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, exactCheck);
+        // Same two groups, same FlowPane. At this width they will usually wrap onto separate
+        // lines by themselves, which is what the other header zones do here too.
+        cellDisplayBox.getChildren().setAll(cellDisplayLabel, cellDisplayCombo);
+        modeAndDisplayRow.getChildren().setAll(modeBox, cellDisplayBox);
+        cellDisplayCombo.setMaxWidth(Double.MAX_VALUE);
 
         filterRow.getChildren().clear();
         scopeRow.getChildren().setAll(scopeLabel, scopeCombo);
@@ -863,7 +919,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
                     ? OverlayOptions.ClassVisibilityMode.HIDE_SELECTED
                     : OverlayOptions.ClassVisibilityMode.SHOW_SELECTED);
         });
-        options.selectedClassVisibilityModeProperty().addListener((obs, oldValue, newValue) -> {
+        modeListener = (obs, oldValue, newValue) -> {
             updatingControls = true;
             try {
                 hideRadio.setSelected(newValue == OverlayOptions.ClassVisibilityMode.HIDE_SELECTED);
@@ -872,7 +928,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
                 updatingControls = false;
             }
             refreshRuleDependentUi();
-        });
+        };
+        options.selectedClassVisibilityModeProperty().addListener(modeListener);
 
         exactCheck.setSelected(options.getUseExactSelectedClasses());
         exactCheck.selectedProperty().addListener((obs, oldValue, newValue) -> {
@@ -883,15 +940,22 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             componentPane.setDisable(Boolean.TRUE.equals(newValue));
             refreshRuleDependentUi();
         });
-        options.useExactSelectedClassesProperty().addListener((obs, oldValue, newValue) -> {
+        exactListener = (obs, oldValue, newValue) -> {
             updatingControls = true;
             try {
                 exactCheck.setSelected(Boolean.TRUE.equals(newValue));
             } finally {
                 updatingControls = false;
             }
-        });
+        };
+        options.useExactSelectedClassesProperty().addListener(exactListener);
         componentPane.setDisable(exactCheck.isSelected());
+
+        // Bidirectional, and that is the whole wiring: the combo is a second face for a value
+        // QuPath owns and persists (OverlayOptions.java:141), so it must follow the View menu and
+        // the viewer's right-click menu as readily as it drives them. Nothing here keeps a copy,
+        // and no preference of ours shadows it.
+        cellDisplayCombo.valueProperty().bindBidirectional(options.detectionDisplayModeProperty());
 
         scopeCombo.getSelectionModel().select(ClassVisibilityPreferences.scopeProperty().get());
         scopeCombo.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) -> {
@@ -1091,6 +1155,70 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         }
     }
 
+    /**
+     * Give a table the three routes to solo that replaced the {@code Only} column.
+     *
+     * <p><b>Double-click</b> is the primary gesture -- isolate-on-double-click is what a table
+     * row invites. <b>Right-click</b> carries the discoverability the column was providing: a
+     * gesture nobody can see is not a feature, and the menu item names the row it will act on so
+     * the meaning of "only" needs no explaining. The <b>O</b> key still works, wired separately
+     * with the rest of the keyboard.</p>
+     *
+     * <p>The double-click handler ignores clicks that land on a checkbox. Without that, a
+     * double-click on the check column would toggle the rule twice AND solo the row, which is
+     * three state changes from one gesture.</p>
+     *
+     * @param table the table to wire
+     * @param namer how to name a row in the menu item
+     * @param solo what to do with the row
+     * @param <T> the row type
+     */
+    private <T> void installSoloGestures(TableView<T> table, java.util.function.Function<T, String> namer,
+                                         java.util.function.Consumer<T> solo) {
+        table.setRowFactory(view -> {
+            TableRow<T> row = new TableRow<>();
+            MenuItem soloItem = new MenuItem();
+            soloItem.setOnAction(e -> {
+                if (row.getItem() != null) {
+                    solo.accept(row.getItem());
+                }
+            });
+            ContextMenu menu = new ContextMenu(soloItem);
+            row.itemProperty().addListener((obs, oldValue, newValue) -> {
+                if (newValue == null) {
+                    row.setContextMenu(null);
+                } else {
+                    soloItem.setText(Strings.format("action.showOnly", namer.apply(newValue)));
+                    row.setContextMenu(menu);
+                }
+            });
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && !row.isEmpty() && row.getItem() != null
+                        && !isInsideCheckBox(event.getTarget())) {
+                    solo.accept(row.getItem());
+                    event.consume();
+                }
+            });
+            return row;
+        });
+    }
+
+    /**
+     * @param target the click target
+     * @return whether it is a checkbox or inside one. A double-click there is two toggles, and
+     *         the user meant the toggle, not an isolate.
+     */
+    private static boolean isInsideCheckBox(Object target) {
+        Node node = target instanceof Node n ? n : null;
+        while (node != null) {
+            if (node instanceof CheckBox) {
+                return true;
+            }
+            node = node.getParent();
+        }
+        return false;
+    }
+
     private void soloClass(ClassRow row) {
         if (soloedClass != null && soloedClass == row.pathClass()) {
             undo();
@@ -1240,6 +1368,23 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         updateHeaders();
     }
 
+    /**
+     * @param mode a cell display mode
+     * @return QuPath's own label for it, verbatim from {@code qupath-gui-strings.properties}
+     *         ({@code OverlayActions.showCell*}). Copied rather than read from QuPath's bundle
+     *         because that bundle is not public API -- but copied WORD FOR WORD, because a combo
+     *         box and a menu that name the same four options differently is worse than either
+     *         wording alone.
+     */
+    private static String cellDisplayLabelFor(OverlayOptions.DetectionDisplayMode mode) {
+        return switch (mode) {
+            case BOUNDARIES_ONLY -> Strings.get("cellDisplay.boundaries");
+            case NUCLEI_ONLY -> Strings.get("cellDisplay.nuclei");
+            case NUCLEI_AND_BOUNDARIES -> Strings.get("cellDisplay.both");
+            case CENTROIDS -> Strings.get("cellDisplay.centroids");
+        };
+    }
+
     private static String displayName(PathClass pathClass) {
         if (pathClass == null || pathClass == PathClass.NULL_CLASS) {
             return Strings.get("row.unclassified");
@@ -1312,17 +1457,18 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             classHeader.setText(filtered
                     ? Strings.format("header.classes.wide.filtered", scopeNoun, classShown, classTotal)
                     : Strings.format("header.classes.wide", scopeNoun, classTotal));
-            componentHeader.setText(filtered
-                    ? Strings.format("header.components.wide.filtered", scopeNoun, componentShown, componentTotal)
-                    : Strings.format("header.components.wide", scopeNoun, componentTotal));
         } else {
             classHeader.setText(filtered
                     ? Strings.format("header.classes.narrow.filtered", scopeNoun, classShown, classTotal)
                     : Strings.format("header.classes.narrow", scopeNoun, classTotal));
-            componentHeader.setText(filtered
-                    ? Strings.format("header.components.narrow.filtered", scopeNoun, componentShown, componentTotal)
-                    : Strings.format("header.components.narrow", scopeNoun, componentTotal));
         }
+        // The component header says what CHECKING a row does, not what the list contains, and
+        // that sentence is the same length in both profiles -- so unlike the class header it does
+        // not need a narrow variant, and it does not name the list scope. The scope is still
+        // named once, in the class header above it.
+        componentHeader.setText(filtered
+                ? Strings.format("header.components.filtered", componentShown, componentTotal)
+                : Strings.format("header.components", componentTotal));
         String countHeaderText = countsStale || !autoRefreshCheck.isSelected()
                 ? Strings.get("column.count.stale")
                 : Strings.get("column.count");
@@ -1634,58 +1780,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             checkBox.setTooltip(new Tooltip(Strings.get("tooltip.row.component")));
             checkBox.setAccessibleText(Strings.format("accessible.row.component", item.name()));
             setGraphic(checkBox);
-        }
-    }
-
-    private final class ClassOnlyCell extends TableCell<ClassRow, ClassRow> {
-
-        private final Button button = new Button(Strings.get("column.only"));
-
-        private ClassOnlyCell() {
-            button.setOnAction(e -> {
-                ClassRow row = getItem();
-                if (row != null) {
-                    soloClass(row);
-                }
-            });
-            button.setTooltip(new Tooltip(Strings.get("tooltip.row.class.only")));
-        }
-
-        @Override
-        protected void updateItem(ClassRow item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setGraphic(null);
-                return;
-            }
-            button.setAccessibleText(Strings.format("action.showOnly", item.displayName()));
-            setGraphic(button);
-        }
-    }
-
-    private final class ComponentOnlyCell extends TableCell<ComponentRow, ComponentRow> {
-
-        private final Button button = new Button(Strings.get("column.only"));
-
-        private ComponentOnlyCell() {
-            button.setOnAction(e -> {
-                ComponentRow row = getItem();
-                if (row != null) {
-                    soloComponent(row);
-                }
-            });
-            button.setTooltip(new Tooltip(Strings.get("tooltip.row.component.only")));
-        }
-
-        @Override
-        protected void updateItem(ComponentRow item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setGraphic(null);
-                return;
-            }
-            button.setAccessibleText(Strings.format("action.showOnly", item.name()));
-            setGraphic(button);
         }
     }
 

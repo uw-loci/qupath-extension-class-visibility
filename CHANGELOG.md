@@ -4,10 +4,77 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
-## 0.1.0 -- unreleased
+## 0.1.1 -- unreleased
+
+**A behaviour change, and the reason for this release.** 0.1.0 is out and installed, so read
+this before upgrading: **the panel is now a session, and closing it puts your view back.**
+
+- **Closing the panel restores the state it opened onto.** Opening the panel has always
+  recorded your whole visibility surface and then hidden everything; in 0.1.0 that was a
+  one-way door, and getting back meant knowing about a menu item. Closing the panel now
+  replays that recording in full -- the class rules you had, the visibility mode,
+  `Exact matches only`, overlay opacity, the cell display mode, and the nine show and fill
+  toggles for detections, annotations, the TMA grid, connections, TMA core labels, the grid
+  and pixel classification. QuPath is left exactly as you found it.
+
+  Every way of closing does it: the floating window's close button, the toolbar button, both
+  menus' `Hide panel`, a docked panel, and **quitting QuPath with the panel open** -- the last
+  of which was the one route 0.1.0's close handling never reached at all.
+
+  **What this changes for you if you are on 0.1.0.** Opening the panel to look at an image
+  now costs nothing: you get your view back on the way out. In exchange, a filter you build
+  *inside* the panel no longer survives the close. Keep the ones worth keeping as a
+  [preset](docs/user-guide.md#presets-a-view-you-named), or leave the panel open -- docked, if
+  it is in the way -- while you work.
+
+- **Docking and undocking still do not restore anything.** They move a running panel between
+  the analysis pane and its own window; your rules, `Find` text and sort order survive both
+  moves, and so does QuPath's own *Undock tab* gesture. A source-level test pins the restore to
+  the close path and out of both re-parenting paths, because a move that quietly reset the
+  user's work would be the worst version of this feature.
+
+- **The close guard is kept, and now runs behind the restore.** It still refuses to leave
+  QuPath in `Show only checked classes` with nothing checked, which is the pair that hides
+  every object at the next launch. After an ordinary close it finds nothing to do. It still
+  fires -- and now always says so -- when the state being restored is *itself* that pair, set
+  from QuPath's own class list before the panel was opened.
+
+- **`The panel is closed, but N class rules are still in force` no longer fires on an ordinary
+  close.** After a successful restore the rules in force are the user's own pre-existing ones,
+  and announcing those back at them on every close would be noise. It still fires when the
+  restore did not land, which is the case it was written for. **The toolbar button's eye is
+  unchanged** and still reports rules in force with the panel closed -- rules set from QuPath's
+  own class list are still rules.
+
+- **New message, for a failure nothing has been seen to cause:**
+  `Could not put the view back to how it was before the panel opened.` The restore cannot throw
+  out of a close, and a close can never refuse a quit, so the worst case is that you are told
+  and pointed at `Restore the state from when the panel opened` to try again.
+
+- **`Restore the state from when the panel opened` has changed job rather than gone away.** It
+  is now mostly an undo *while the panel is open*; closing does the same restore for you. It
+  stays on both menus, where it needs the panel open no more than `Reset all visibility` does.
+
+- A cancelled quit -- unsaved viewers, a running script -- now leaves the panel closed and the
+  view restored, as though you had closed it yourself. In 0.1.0 it left only the mode flipped.
+  Press the toolbar button again to reopen.
+
+- 105 unit tests, up from 89: `SessionRestoreTest` (every captured field round-trips, a failed
+  restore is reported rather than thrown), `CloseMessageTest` (the whole close-notification
+  truth table) and one addition to `SourceDisciplineTest` pinning the restore's single call
+  site.
+
+**Not verified.** All six close routes are checked at source and by unit test; none has been
+exercised in a running QuPath. Still built and tested on Linux only -- see *Reporting a
+problem* in the [README](README.md).
+
+## 0.1.0 -- 2026-08-27
 
 First implementation. Built and unit-tested on Linux and loaded into a running QuPath there;
 never run on macOS or Windows -- see *Reporting a problem* in the [README](README.md).
+
+Note for anyone reading this after 0.1.1: in 0.1.0, closing the panel left your class rules
+in force and did **not** put back the view the panel opened onto. 0.1.1 changed that.
 
 - Class visibility panel: a list of the classes present in the current image and a list of
   the components those class names are built from, each with object counts, driving QuPath's

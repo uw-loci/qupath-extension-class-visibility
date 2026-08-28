@@ -48,14 +48,21 @@ toolkit.** Three shapes of test exist under it:
 - **`ViewerVisibilityContractTest`** builds a real `OverlayOptions` so it can assert on
   `isHidden(PathObject)`, the predicate the painter actually consults, rather than on a mock.
   That touches `javafx.base` observable collections and properties.
-- **`CloseGuardTest`, `OpeningStateTest` and `StartupReconciliationTest`** are the ones that
-  surprise people. They call statics -- `ClassVisibilityPane.applyCloseGuard`,
-  `ClassVisibilityPane.applyOpeningState`, `ClassVisibilityExtension.reconcileStartupVisibility`
-  -- and calling a static method **loads the declaring class**, which resolves its superclass,
-  `BorderPane`. So they reach `javafx.graphics`, not merely `javafx.base`, without ever
-  mentioning a JavaFX type themselves. That is also why those three entry points are static:
-  the close guard runs at QuPath shutdown with no panel alive, and the startup reconciliation
-  runs before any panel exists.
+- **`CloseGuardTest`, `OpeningStateTest`, `StartupReconciliationTest` and `SessionRestoreTest`**
+  are the ones that surprise people. They call statics -- `ClassVisibilityPane.applyCloseGuard`,
+  `ClassVisibilityPane.applyOpeningState`, `ClassVisibilityPane.restoreQuietly`,
+  `ClassVisibilityExtension.reconcileStartupVisibility` -- and calling a static method **loads
+  the declaring class**, which resolves its superclass, `BorderPane`. So they reach
+  `javafx.graphics`, not merely `javafx.base`, without ever mentioning a JavaFX type
+  themselves. That is also why those entry points are static: the close guard runs at QuPath
+  shutdown with no panel alive, and the startup reconciliation runs before any panel exists.
+- **`SourceDisciplineTest`** reads the source files as text and asserts on their shape. That
+  is how the one-call-site rule for `restoreOpeningState()` is enforced, and how the
+  `setPathClass(` ban is: neither is provable from behaviour without a running QuPath.
+  **`CloseMessageTest`** exercises `ClassVisibilityExtension.closeMessage`, a pure static over
+  four booleans and an int, so the whole close-notification truth table is testable with no
+  panel, no options and no toolkit. Keep that decision a pure static; the moment it reads live
+  state, the table stops being checkable.
 
 None of them starts a toolkit. **The line is not which JavaFX modules get loaded -- it is
 whether anything is instantiated that needs a live toolkit.** Loading `BorderPane` is fine;
@@ -147,7 +154,9 @@ restart"* -- but the mode was included in the persistent list anyway.
 **Do not "fix" this by persisting `selectedClasses` in the extension.** That would make this
 panel the only thing in QuPath capable of hiding objects across a restart, which widens the
 failure rather than narrowing it. The mitigations are the status strip, the toolbar button's
-rules tooltip, the guard at panel close **and at quit**, and the snapshot/restore route.
+rules tooltip, the guard at panel close **and at quit**, the snapshot/restore route, and -- as
+of 0.1.1 -- the restore on close, which means the panel can no longer leave a filter of its own
+in force with nothing on screen to own it.
 
 ### The opening state, and the three guards around it
 
@@ -178,13 +187,32 @@ Two consequences worth holding on to:
   is deliberately **not** reset on open: it is a QuPath-wide setting the user may have set for
   their own reasons, and the status strip already warns when it is on.
 
+**Closing replays the snapshot -- 0.1.1.** `closePanel()` calls
+`ClassVisibilityPane.restoreOpeningState()`, which replays the very `VisibilitySnapshot`
+instance `applyOpeningState()` stored, and then runs the guard behind it. Three constraints on
+that, all pinned by `SourceDisciplineTest.theRestoreIsOnTheClosePathAndNotOnTheReparentingOnes`:
+
+- **`restoreOpeningState()` has exactly one call site, and it is inside `closePanel()`.** Every
+  dismissal route funnels there, including QuPath shutdown as of 0.1.1.
+- **`dockAsTab` and `undockToWindow` must reach neither the restore nor `closePanel()`.** They
+  move a running panel; ending the session on a re-parent would silently discard the user's
+  work. `attachToWindow` keeps its `if (!reparenting)` gate on the `WINDOW_HIDDEN` handler for
+  the same reason.
+- **The store and the panel hold the same snapshot object**, not two captures. `capture` now
+  returns what it stored so the on-demand restore and the close replay can never disagree about
+  what "before" was.
+
+Listeners are detached before the replay -- `unbind`, `dispose()`, then restore -- because the
+replay is a burst of option writes (one uncoalesced overlay-cache clear per rule) and a panel
+on its way out has no business rebuilding tables for a view nobody will see.
+
 There are then three checks on the empty-`SHOW_SELECTED` state, and they cover disjoint
 routes. Do not merge them:
 
 | Where | What it does |
 |---|---|
-| `closePanel()` -> `applyCloseGuard` | every close route goes through it: the Extensions menu, the toolbar toggle, the context menu, `WINDOW_HIDDEN`, tab removal |
-| the `WINDOW_CLOSE_REQUEST` filter | the quit path, installed at extension load, so it runs in sessions where the panel was never opened |
+| `closePanel()` -> restore -> `applyCloseGuard` | every close route goes through it: the Extensions menu, the toolbar toggle, the context menu, `WINDOW_HIDDEN`, tab removal. After a successful restore the guard is usually silent; it still fires when the *snapshot itself* is the empty-`SHOW_SELECTED` pair, which is a state QuPath must not be left in whoever set it |
+| the `WINDOW_CLOSE_REQUEST` filter | the quit path, installed at extension load, so it runs in sessions where the panel was never opened. As of 0.1.1 it calls `closePanel()` first when the panel is open, so quitting restores like any other close, and then runs the guard again for the panel-never-opened case |
 | `reconcileStartupVisibility` | the crash / force-quit path, called first thing in `installExtension`'s `Platform.runLater`, before any UI exists. It delegates to `applyCloseGuard` so there is one implementation of the rule, and logs the startup-specific line on top |
 
 The reconciliation must leave the mode alone whenever any rule is present. It is a rescue from
@@ -193,8 +221,33 @@ a state with no information in it, never a thing that discards someone else's fi
 **The guard's notification is conditional; the guard is not.** Since the panel opens into
 exactly the state the guard undoes, an unconditional notification would fire on every ordinary
 close -- the extension announcing its own default being tidied up, until the user stopped
-reading the one notification that matters. `ClassVisibilityPane.hasUserChanges()` gates the
-message, not the guard. Anything added here inherits that split.
+reading the one notification that matters. The guard always runs; only the message is gated.
+Anything added here inherits that split.
+
+**One close, at most one message, and the decision is a pure static.**
+`ClassVisibilityExtension.closeMessage(...)` returns `NONE | RESTORE_FAILED | GUARD |
+RULES_ACTIVE` and is tested without a toolkit (`CloseMessageTest`). Two of its rules are
+load-bearing and easy to undo by accident:
+
+- **`RESTORE_FAILED` wins over `GUARD`.** "We could not put your view back" is the bigger fact,
+  and two notifications for one close is how a user learns to dismiss both.
+- **The C1 "rules are still in force" notification is suppressed when the rules in force are
+  the ones we just restored** (`VisibilitySnapshot.matchesRules`). Firing it after a successful
+  restore would announce the user's own pre-existing rules back at them on every close. It
+  still fires when the restore did not land, because then the rules may be ours -- which is the
+  case it was built for. **The eye icon is not gated by any of this**: rules set from QuPath's
+  own class list are rules, and `rulesAreActive()` reports them either way.
+
+The guard message's own gate moved with the restore. It used to be gated on `hasUserChanges()`,
+because without a restore the guard's usual job was tidying up the panel's opening default.
+After a successful restore the guard can only be undoing a state the user themselves had, so it
+is always worth saying.
+
+**A restore may not throw out of a close.** `ClassVisibilityPane.restoreQuietly` returns
+`RestoreOutcome.RESTORED | FAILED | NOTHING_TO_RESTORE` and never propagates; every
+notification goes through `notifyQuietly`. Same discipline as the pre-existing shutdown
+notification, for the same reason -- a message to the user is a courtesy, refusing them their
+quit is not.
 
 **Do not move the shutdown guard off `WINDOW_CLOSE_REQUEST`, and do not make it an event
 handler.** It was on `WINDOW_HIDING` until Phase 5, where it never ran once. QuPath 0.7 never
@@ -207,10 +260,12 @@ no better: preferences are already written by then. `WINDOW_CLOSE_REQUEST` does 
 facts verified with a standalone JavaFX probe rather than reasoned about (finding B1).
 
 The residual: QuPath can consume that event and cancel the quit (unsaved viewers, a running
-script, the script editor), so the guard has then flipped the mode mid-session. Accepted,
-because the only state it moves the user out of is the completely empty viewer -- a rescue,
-not a control moving under their hand -- and the notification fires either way. Anything added
-to that path inherits the same constraint.
+script, the script editor). As of 0.1.1 the filter has by then closed the panel and replayed
+the snapshot, so a cancelled quit leaves a live session with the panel shut and the view
+restored -- as though the user had closed it themselves. Accepted, and the alternative was
+worse: restoring the view while leaving the panel open puts a panel on screen whose rules have
+all been undone underneath it. The state is visible and one button press undoes it. Anything
+added to that path inherits the same constraint.
 
 Related dead code worth knowing about so nobody trusts it:
 `getAllPathClassesVisible()` (`:545`) returns `selectedClasses.isEmpty()`, i.e. it claims
@@ -378,6 +433,11 @@ surface, not just this panel's three properties: `selectedClasses`,
 `showTMAGrid`, `showConnections`, `fillDetections`, `fillAnnotations`, `showTMACoreLabels`,
 `showGrid`, `showPixelClassification`. All are on `OverlayOptions`.
 
+**The snapshot has two readers.** The menu item replays it on demand; `closePanel()` replays
+it as the panel goes. `capture` returns the instance it stored precisely so both readers hold
+the *same* object -- two independent captures could disagree about what "before" was, and the
+disagreement would surface as a close that put the user somewhere they had never been.
+
 **`VisibilityStateStore.capture` replaces; `captureIfAbsent` does not.** The panel calls
 `capture` on every open, so the menu item's label is literally true on the second opening as
 well as the first -- a user who built a view, closed the panel and reopened it wants their way
@@ -386,6 +446,12 @@ back to be *that* view, not to whatever the session started with an hour earlier
 may be the first thing to touch the surface at all. That automatic capture is what makes this
 a recovery route rather than a power-user feature; removing it would quietly downgrade the
 feature to the latter.
+
+**`matchesRules(OverlayOptions)` compares rules only** -- the set, the mode and the exact flag.
+It answers one question, "are the rules in force the ones we put back", which is the C1
+notification's gate. Opacity is restored either way and is not a class rule; widening this
+comparison would suppress a notification the user needs on a difference that is not about
+hiding anything.
 
 A **preset** is deliberately a different object. It is named, saved in the project, and it
 captures `classRules` alongside the panel's own `checkedClasses` / `checkedComponents` /
@@ -479,8 +545,9 @@ InstanSeg pattern.
   returns 200 and matches the published asset name; the entry was prepended with all prior
   entries kept. The org-level `CATALOG_DISPATCH_TOKEN` secret has failed to be reachable from
   a brand-new repo before, so check rather than assume.
-- Tag plus a GitHub release with the shadow jar attached. Update the `0.1.0` heading in
-  `CHANGELOG.md` from *unreleased* to the release date at that point, not before.
+- Tag plus a GitHub release with the shadow jar attached. Give the version its release date in
+  `CHANGELOG.md` at that point, not before -- a heading stays *unreleased* until the tag and
+  the release both exist.
 - **Do not claim macOS or Windows verification** in the README, the release notes or
   anywhere else until someone has actually run it there.
 

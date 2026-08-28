@@ -73,11 +73,12 @@ Two things the script did not have:
   better one when you want to take away two classes rather than keep two. The panel opens on
   the first of the two every time, and does not remember if you switched.
 - **A recorded way back.** The script blanked your view with no record of what it had been.
-  This panel records the whole visibility surface before it hides anything, and
-  `Restore the state from when the panel opened` -- on the toolbar button's right-click menu
-  and under `Extensions > Class visibility` -- puts it back. Closing the panel with nothing
-  checked also returns the mode to `Hide checked classes`, so you never leave the panel in the
-  blank state.
+  This panel records the whole visibility surface before it hides anything and **replays it
+  when you close the panel** -- class rules, mode, `Exact matches only`, overlay opacity, the
+  cell display and the object-type toggles, all as they were. Whatever the panel did to your
+  view lasts exactly as long as the panel is open. `Restore the state from when the panel
+  opened` -- on the toolbar button's right-click menu and under
+  `Extensions > Class visibility` -- replays the same record without closing the panel.
 
 One caution the script shared and this extension is careful about: the mode is saved across a
 QuPath restart while your ticks are not, so `Show only checked classes` plus an empty set is
@@ -156,10 +157,11 @@ equivalent, and nothing in it changes object data of any kind.
   can dock it into QuPath's analysis pane next to Annotations and Hierarchy when you would
   rather it were always visible and out of the way. Nothing appears in your analysis pane
   unless you put it there.
-- **Blanking the view is now announced and reversible.** The script blanked your image on
-  open and said nothing. This panel does the same thing, then states it --
+- **Blanking the view is now announced, reversible, and temporary.** The script blanked your
+  image on open and said nothing. This panel does the same thing, then states it --
   `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` --
-  haloes `Check all listed` as the one-click way back, and records what you had first.
+  haloes `Check all listed` as the one-click way back, records what you had first, and puts
+  that record back when you close the panel.
 - **You can get back.** Between `Check all listed`, `Reset all` in the panel and
   `Restore the state from when the panel opened` on the toolbar button's menu, there is always
   a way out of a state where you cannot see anything -- including states the panel did not

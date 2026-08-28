@@ -38,7 +38,8 @@ for the message on your screen finds it here.
 | `[!] "Exact matches only" is on. ...` | A QuPath-wide setting is blocking component rules -- see [One QuPath setting can switch the component list off](#one-qupath-setting-can-switch-the-component-list-off). |
 | `Counting classes in ... ` | A recount is running. On a very large image, see [Work on a very large image](#work-on-a-very-large-image-without-the-panel-slowing-you-down). |
 | `"positive" is in 26 of 28 classes and 401,552 of 452,110 objects.` | You checked a component that is in nearly every class -- see [Components that appear in almost every class](#components-that-appear-in-almost-every-class). |
-| `The panel is closed, but 3 class rules are still in force. Objects stay hidden until you clear them.` | A notification when you close the panel with rules set -- see [Your rules outlive the panel](#your-rules-outlive-the-panel-and-the-toolbar-button-says-so). |
+| `The panel is closed, but 3 class rules are still in force. Objects stay hidden until you clear them.` | Closing the panel could not put your view back, and rules are in force that may be the panel's -- see [Rules can still be in force with no panel open](#rules-can-still-be-in-force-with-no-panel-open-and-the-toolbar-button-says-so). An ordinary close does not show this: it restores your view and says nothing. |
+| `Could not put the view back to how it was before the panel opened. ...` | The restore on close failed. Your view is wherever the panel left it -- see [Closing the panel puts your view back](#closing-the-panel-puts-your-view-back). |
 | `Switched "Show only checked classes" back to "Hide checked classes" ...` | The guard fired on a setting you made -- see [What the panel does about it](#what-the-panel-does-about-it). |
 | `Put the view back to how it was before this panel touched anything.` | `Restore the state from when the panel opened` ran -- see [If everything disappears](#if-everything-disappears). |
 | `Saved the preset "T cells" to this project.` / `Deleted the preset "T cells".` | A named view was written into, or removed from, the project -- see [Presets: a view you named](#presets-a-view-you-named). |
@@ -75,6 +76,9 @@ switches to `Show only checked classes` with nothing checked -- which means noth
 You then check the classes or components you want and they come back, one population at a
 time.
 
+**And closing the panel puts the recorded view back**, so the blanking lasts exactly as long
+as the panel does -- see [the section after this one](#closing-the-panel-puts-your-view-back).
+
 This is the workflow of the Groovy script this extension ports, and it is the right way round
 for the data the panel is for: with thirty overlapping classes painted over each other there
 is nothing to see until most of them are gone. Starting from everything visible would mean
@@ -96,15 +100,56 @@ Four things make it recoverable rather than alarming:
 
 **Opening the panel also clears any class rules that were already in force**, including rules
 you set from QuPath's own class list in the Annotations tab. That is what "hides everything"
-requires: an empty checked set. Those rules are in the snapshot, so the restore above brings
-them back, but they are not waiting for you when you close the panel. If you close without
-checking anything, the mode returns to `Hide checked classes` and every object is visible --
-which is a clean slate, not necessarily the view you arrived with.
+requires: an empty checked set. Those rules are in the snapshot, so both the restore above and
+closing the panel bring them back.
 
 **If you would rather start from everything.** Switch the mode to `Hide checked classes` as
 soon as the panel opens: everything reappears, and a checked row then means "hide this". The
 panel does not remember that choice between openings -- it opens hiding everything every time,
 and there is no preference to change that.
+
+### Closing the panel puts your view back
+
+**The panel is a session. Closing it undoes everything opening it did.** Whatever the panel
+found when it opened is what QuPath is left with when it closes: your class rules, the
+visibility rule, `Exact matches only`, overlay opacity, the cell display mode, and every one
+of the object-type show and fill toggles. It does not matter what you did in between, or
+whether you did anything at all.
+
+| Closed how | Restores? |
+|---|---|
+| The floating window's own close button | yes |
+| Pressing the toolbar button while the panel is in front | yes |
+| `Hide panel` on the toolbar button's menu, or on **Extensions > Class visibility** | yes |
+| A docked panel, closed by any of those three -- a docked tab has no close button of its own | yes |
+| Quitting QuPath with the panel open | yes |
+| **`Dock as tab` and `Undock to window`** | **no, and deliberately** -- see below |
+
+**Moving the panel is not closing it.** Docking and undocking carry the running panel from one
+surface to the other: your rules, your `Find` text and your sort order all survive the move,
+and nothing is restored. The same is true of QuPath's own *Undock tab* gesture on the docked
+tab. If moving the panel reset your work, docking would be a trap; it is not.
+
+Two consequences of the restore worth holding on to:
+
+- **Opening the panel to look costs nothing.** Open it on an image, read the counts, close it,
+  and QuPath is where you left it. There is no cleaning up afterwards.
+- **A filter you build in the panel does not survive the close.** If you want to keep it, keep
+  it deliberately: save it as a [preset](#presets-a-view-you-named), which is named, stored in
+  the project and there next week -- or leave the panel open, which is what it is designed for
+  while you work.
+
+**An ordinary close is silent**, because there is nothing to report: you are where you were.
+Two closes are not ordinary, and both say so:
+
+- **The restore failed** -- something QuPath refused to write. Nothing has been seen to cause
+  this, and the panel still tells you rather than leaving you to find out:
+  `Could not put the view back to how it was before the panel opened.` It names
+  `Restore the state from when the panel opened` as the way to try again.
+- **The state you had was itself the blank one** -- `Show only checked classes` with nothing
+  checked, set before you ever opened the panel. Restoring that faithfully would hand you back
+  an empty viewer and, worse, leave it to greet you at the next launch, so the guard flips the
+  mode and says so. See [What the panel does about it](#what-the-panel-does-about-it).
 
 ### Where to find it
 
@@ -139,7 +184,7 @@ Read the two channels separately. A slashed eye on an unpressed button is the co
 learning: the panel is closed and objects are being hidden anyway. QuPath's own class list marks
 hidden classes with the same open/slashed eye, so it is not a new vocabulary, and the tooltip
 states both facts in words -- see
-[Your rules outlive the panel](#your-rules-outlive-the-panel-and-the-toolbar-button-says-so).
+[Rules can still be in force with no panel open](#rules-can-still-be-in-force-with-no-panel-open-and-the-toolbar-button-says-so).
 
 **The panel does not come back after a restart, docked or otherwise.** It starts closed in
 every session and always reopens as a floating window, even if you left it docked. There is
@@ -215,8 +260,10 @@ rows appear.
    the strip names what you soloed. Double-click the same row again to undo it, or press the
    `Undo` button in the status strip, which says what it will undo:
    `Undo "Show only CD3: CD8"`.
-6. **`Check all listed`** brings everything back, and so does closing the panel without
-   leaving anything checked.
+6. **`Check all listed`** brings every listed class back on screen. **Closing the panel**
+   does something different and usually better: it puts back the view you had *before* step 1,
+   whatever that was -- see
+   [Closing the panel puts your view back](#closing-the-panel-puts-your-view-back).
 7. **`Reset all`** always gets you back to QuPath's own defaults: no rules,
    `Hide checked classes`, `Exact matches only` off. From there a checked row means "hide
    this" instead.
@@ -244,9 +291,9 @@ what the next click will do:
 
 | Tooltip | The next click will |
 |---|---|
-| `Open the Class visibility panel. It hides every object to start with, so you can check the classes you want to see.` | open it |
+| `Open the Class visibility panel. It hides every object to start with, so you can check the classes you want to see; closing it puts your view back.` | open it |
 | `Bring the Class visibility panel to the front.` | raise it, because it is open but buried |
-| `Close the Class visibility panel.` | close it |
+| `Close the Class visibility panel and put your view back to how it was before it opened.` | close it |
 
 ### Docking, when you want it always there
 
@@ -254,6 +301,11 @@ If you would rather have the panel in the analysis pane than floating over your 
 choose **`Dock as tab`**. The panel moves into the analysis pane and becomes a tab like any
 other, next to Annotations and Hierarchy. The same control in reverse moves it back out into
 a floating window.
+
+**A move is not a close.** The panel carries on running on the other surface: your rules, your
+`Find` text, your sort order and your `Any`/`All` choice all survive both moves, and none of
+them triggers the restore that closing the panel does. The same is true of QuPath's own undock
+gesture below. You can move the panel as often as you like without losing a thing.
 
 Once it is docked, QuPath's own undock gesture works on it too -- **right-click the tab and
 choose "Undock tab"** -- the same gesture that works on QuPath's built-in tabs and on the
@@ -717,11 +769,14 @@ three classes" should not require a click to see.
 you have 28 classes and care about two of them -- which, on a highly multiplexed image, is
 most of the time. Soloing a row puts you in it too, from wherever you were.
 
-**The panel sets the mode when it opens.** It switches to `Show only checked classes` and
-clears the checked set, which is what makes the viewer go blank on the first press -- see
+**The panel sets the mode when it opens, and puts it back when it closes.** It switches to
+`Show only checked classes` and clears the checked set, which is what makes the viewer go
+blank on the first press -- see
 [Opening the panel hides everything](#opening-the-panel-hides-everything). Switch to
 `Hide checked classes` at any time and the panel follows you there for as long as the panel is
-open; it does not remember the choice for next time.
+open; it does not remember the choice for next time, because closing restores the mode you had
+before you opened it -- see
+[Closing the panel puts your view back](#closing-the-panel-puts-your-view-back).
 
 The mode is **global**. It applies to every viewer, every image, and every project -- there
 is one setting for the whole application, not one per image. So the mode the panel sets on
@@ -749,9 +804,11 @@ exactly that.
 **With this extension installed, that particular landing is caught at startup.** When QuPath
 launches in `Show only checked classes` with nothing checked, the extension puts the mode back
 to `Hide checked classes` before any window appears, and writes a line into the log saying it
-did. You will not see a blank viewer from a previous session's mode. The panel's close guard
-and the guard at quit cover the ordinary routes into that state; the startup check covers the
-one neither can -- a crash or a force-quit, where nothing of ours got to run.
+did. You will not see a blank viewer from a previous session's mode. Closing the panel and
+quitting QuPath cover the ordinary routes into that state -- both restore the view the panel
+opened onto, and a guard runs behind the restore in case the state being restored is itself
+that pair. The startup check covers the one route neither can -- a crash or a force-quit, where
+nothing of ours got to run.
 
 </details>
 
@@ -829,6 +886,12 @@ with the extension installed you should not meet it at all. It is described here
 can still meet it on a machine without the extension, and because the same blank viewer has
 several other causes, below.
 
+It is also worth saying what this section is *not* about any more. Since 0.1.1 the panel puts
+your whole view back when it closes, so **the panel itself is no longer a way to arrive at a
+blank viewer with no panel open**. What is left are the causes that were never the panel's:
+a rule set from QuPath's own class list, a rule set by a script, an object type switched off
+in the **View** menu, opacity at zero, or a machine without this extension on it at all.
+
 While the panel is open you will not have to guess: the status strip reads
 
 > `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.`
@@ -870,6 +933,11 @@ visibility**, and choose **`Restore the state from when the panel opened`**. Thi
 recorded snapshot rather than resetting to defaults -- so it puts back the state you *had*,
 not the state QuPath ships with.
 
+**Its main job is now an undo while the panel is open.** Since 0.1.1 the panel replays that
+same snapshot for you when it closes, so you no longer have to remember this item in order to
+get your view back after a session. Reach for it when you are still working in the panel and
+want to abandon what you have done, or when a close told you it could not put your view back.
+
 **The recording happens by itself, and you never had to ask for it.** The panel takes a
 snapshot every time it opens, before it hides anything, and replaces the previous one; with
 the panel closed, the menu's own actions take one first if none exists. That is the whole
@@ -889,9 +957,11 @@ fix a class rule takes those back too. Nothing is destroyed and everything is re
 if you know the trouble is a class rule, `Reset all` or unchecking the row is the narrower
 tool.
 
-**Which to use:** `Reset all` if you want a clean slate and do not mind losing your setup.
+**Which to use:** `Reset all` if you want a clean slate and do not mind losing your setup, and
+it is the one to reach for when whatever went wrong started before this panel did.
 `Restore the state from when the panel opened` if you want back whatever you had before this
-panel touched anything -- including things that were never about classes.
+panel touched anything -- including things that were never about classes. Or simply close the
+panel, which does the second of those for you.
 
 If nothing has been recorded yet, the menu item says so and greys itself out:
 `Restore the state from when the panel opened (nothing recorded yet)`. The panel tells you
@@ -941,11 +1011,20 @@ does this rather than fixing it silently:
 > Switched "Show only checked classes" back to "Hide checked classes" because no classes
 > were checked. Otherwise every object would have been hidden the next time QuPath starts.
 
-**You are told only when it is undoing something you did.** The panel now opens into exactly
-this state on purpose, so closing it without checking anything trips the guard every single
-time; a notification on every close would be the panel announcing its own tidying-up until you
-stopped reading the one that matters. So the guard always runs, and the message appears only
-when the state it is undoing is one you set yourself.
+**The guard runs behind the restore, and after 0.1.1 it usually finds nothing to do.** Closing
+the panel puts back the view you had before you opened it, and that view was almost never the
+empty "show only" pair. The one case where it still fires on an ordinary close is the case it
+was written for: you were *already* in `Show only checked classes` with nothing checked before
+you opened the panel -- set from QuPath's own class list. Restoring that faithfully would hand
+you an empty viewer and, because QuPath saves the mode but not the checked set, leave it
+waiting at the next launch. So the guard flips the mode, and because that state was yours and
+not the panel's, it says so.
+
+**You are told only when it is undoing something you did.** Before the restore existed, the
+panel's own opening state tripped the guard on every close, and a notification each time would
+have been the panel announcing its own tidying-up until you stopped reading the one that
+matters. The guard always runs; the message appears only when the state being undone is one
+you set yourself.
 
 The guard deliberately does **not** fire while the panel is open. Auto-flipping the mode
 because you unchecked your last class on the way to checking a different one would move a
@@ -957,12 +1036,13 @@ extension loads, not when the panel opens, so it runs at every quit -- including
 which you never opened the panel and reached the empty "show only" state from QuPath's own
 class list.
 
-**One case where it fires and you do not quit.** QuPath can cancel a quit -- unsaved viewers,
-a running script, an open script editor -- and the guard has already run by then, so you are
-left in `Hide checked classes` in a session that is still going. That is deliberate: the only
-state it ever moves you out of is the one where you are looking at a completely empty viewer,
-so it is a rescue rather than a control moving under your hand, and the notification says what
-happened either way.
+**One case where quitting changes things and you do not quit.** QuPath can cancel a quit --
+unsaved viewers, a running script, an open script editor -- and by then the panel has already
+closed itself and put your view back, guard included. So a cancelled quit leaves you in a
+session that is still going, with the panel shut and the view you had before you opened it. It
+is visible rather than mysterious, and one press of the toolbar button opens the panel again.
+The alternative -- restoring the view but leaving the panel standing -- would leave a panel on
+screen whose rules had all been undone underneath it, which is worse.
 
 **And there is a third check, at startup.** A crash or a force-quit runs neither guard, so
 QuPath could still come back in `Show only checked classes` with nothing checked -- a blank
@@ -977,9 +1057,13 @@ It leaves the mode alone when any class rule is present: a view hiding three of 
 classes is a filter, and the startup check must never be the thing that discards one.
 
 **What the guards do not cover:** they only ever act on the *empty* "show only" state. A view
-hiding three of your forty classes is left exactly as you set it, at panel close, at quit and
-at startup alike -- that is a filter you built, not a state you fell into. See
-[Your rules outlive the panel](#your-rules-outlive-the-panel-and-the-toolbar-button-says-so).
+hiding three of your forty classes is a filter you built, not a state you fell into, and no
+guard will touch it -- at quit, at startup, or behind the restore on close. What *does* touch
+it is the restore itself: a filter you built inside the panel goes away when the panel closes,
+because the view you had before you opened it comes back in its place. If a filter is worth
+keeping, save it as a [preset](#presets-a-view-you-named). See
+[Closing the panel puts your view back](#closing-the-panel-puts-your-view-back) and
+[Rules can still be in force with no panel open](#rules-can-still-be-in-force-with-no-panel-open-and-the-toolbar-button-says-so).
 
 </details>
 
@@ -997,9 +1081,9 @@ reach for, the items are the same:
 
 | Item | What it does |
 |---|---|
-| **`Restore the state from when the panel opened`** | Put back the recorded snapshot of your whole visibility surface. See [If everything disappears](#if-everything-disappears). |
+| **`Restore the state from when the panel opened`** | Put back the recorded snapshot of your whole visibility surface, without closing the panel. Closing the panel replays the same snapshot, so this is mostly an undo for the session you are in. See [If everything disappears](#if-everything-disappears). |
 | **`Reset all visibility`** | The same three-step reset as the panel's `Reset all`: mode to `Hide checked classes`, `Exact matches only` off, every rule cleared. Available without opening the panel. |
-| **`Show panel`** / **`Hide panel`** | Open the panel, or close it if it is already in front -- the same three outcomes as the button itself. The label says which it will do. |
+| **`Show panel`** / **`Hide panel`** | Open the panel, or close it if it is already in front -- the same three outcomes as the button itself. The label says which it will do. `Hide panel` restores your view, exactly as every other way of closing does. |
 | **`Help`** | The same short summary the panel's **`?`** button shows: what the two lists do, what `List` does *not* do, and the ways to get your objects back. This guide is the longer version. |
 
 The first two are reachable **without the panel being open**, which is the whole point: if
@@ -1020,7 +1104,7 @@ to learn, and the Extensions menu is the one to fall back on.
 
 **Hovering the button is worth a mention of its own.** Its tooltip names both what the next
 click will do *and* how many class rules are currently in force -- see
-[Your rules outlive the panel](#your-rules-outlive-the-panel-and-the-toolbar-button-says-so).
+[Rules can still be in force with no panel open](#rules-can-still-be-in-force-with-no-panel-open-and-the-toolbar-button-says-so).
 
 </details>
 
@@ -1087,6 +1171,11 @@ person staring at a blank viewer has by definition saved none. That is what
 **`Restore the state from when the panel opened`** is for -- recorded automatically, every
 time the panel opens, whether or not anyone planned for it. See
 [If everything disappears](#if-everything-disappears).
+
+**The forethought runs the other way too.** Because closing the panel restores the view you had
+before it opened, a filter you built *inside* the panel does not survive the close. A preset is
+how you keep one: name it, and it is in the project next week and on the next image. See
+[Closing the panel puts your view back](#closing-the-panel-puts-your-view-back).
 
 There is one thing a preset cannot do that the automatic snapshot can: if a script has set an
 object predicate, a preset leaves it exactly where it found it rather than pretending to
@@ -1332,20 +1421,18 @@ which called `resetDetectionClassifications()` and **destroyed your classifier o
 There is deliberately no such button here, and no control in this panel uses "classify" as a
 verb.
 
-### Your rules outlive the panel, and the toolbar button says so
+### Rules can still be in force with no panel open, and the toolbar button says so
 
-Closing the panel does not clear your rules. They belong to QuPath, not to the panel, so
-`Hide checked classes` with three classes checked stays exactly that with the panel gone --
-which is usually what you want, because closing the panel to reclaim screen space is a
-reasonable thing to do while working filtered. Clearing them for you would make the panel
-destructive of your working state in order to protect you from forgetting it.
+Class rules belong to QuPath, not to this panel. Closing the panel puts back the rules you had
+when you opened it -- and **if what you had was a filter, a filter is what you get back**.
+Rules set from QuPath's own class list, or from a script, are in force whether this panel has
+ever been opened or not, and a machine without this extension has nothing at all to tell you
+about them.
 
 It matters because a *blank* viewer announces itself -- nobody mistakes it for data -- while a
 viewer showing thirty-seven of your forty classes looks completely normal, and that is the one
-somebody screenshots. So the panel says it twice:
+somebody screenshots. So the panel tells you without being asked:
 
-- **When you close the panel with rules set**, a notification: `The panel is closed, but 3
-  class rules are still in force. Objects stay hidden until you clear them.`
 - **The toolbar button's eye goes slashed**, and its iris turns orange, whenever anything is
   being hidden by class -- with the panel open, closed, or never opened. This is the signal you
   do not have to do anything to see, and it is deliberately on the icon rather than on the
@@ -1373,6 +1460,11 @@ One indicator it cannot give you:
   a project where nobody ran "Populate from image", that is the common case rather than the
   edge case. This panel deliberately does not add classes to the project's list to fix it;
   writing into your class list to improve a status icon is a worse trade.
+
+There is also a notification, `The panel is closed, but 3 class rules are still in force.
+Objects stay hidden until you clear them.` -- but you should not normally see it. It fires only
+when closing the panel could not put your view back, so the rules left in force may be the
+panel's own. An ordinary close restores your view and says nothing.
 
 If you are about to hand the screen, a screenshot or an image export to anyone else, **glance
 at the toolbar button: a slashed eye means a filter is on.** Hover it for the count, and either
@@ -1437,7 +1529,7 @@ difference decides what comes back after a restart.
 | `Hide checked classes` / `Show only checked classes` | QuPath | **yes** | global, but the panel sets it to `Show only checked classes` every time it opens |
 | `Exact matches only` | QuPath | **yes** | global |
 | `Cell display` | QuPath | **yes** | global |
-| Which classes are checked (your rules) | QuPath | **no** -- and cleared when the panel opens | global for the session |
+| Which classes are checked (your rules) | QuPath | **no** -- cleared when the panel opens, and put back when it closes | global for the session |
 | Saved presets | the panel | **yes**, in the project | one set per project, shared with anyone who opens it |
 | `Any` / `All` | the panel | yes | the panel |
 | `List` scope | the panel | yes | the panel |
@@ -1450,6 +1542,12 @@ difference decides what comes back after a restart.
 | The panel window's position and size | the panel | **yes** | one window, whichever image or project |
 | Whether the panel was docked or floating | the panel | **no** -- it always reopens as a window | -- |
 | Whether the panel was open at all | -- | **no** -- it always starts closed | -- |
+
+One row is missing from that table on purpose, because it is not a setting: **the snapshot the
+panel takes when it opens**. It lives for as long as QuPath does, is replaced on every opening,
+and is replayed when the panel closes -- see
+[Closing the panel puts your view back](#closing-the-panel-puts-your-view-back). Nothing about
+it survives a restart, and nothing about it is written to disk.
 
 There is one more, with no control anywhere in the panel: the **80% threshold** at which a
 component's spread ratio is shown in bold is a saved preference
@@ -1482,14 +1580,28 @@ warning strip and a `Turn off` button. See
 
 **Everything vanished when I opened the panel.**
 That is how it opens: `Show only checked classes` with nothing checked, so that you check your
-way to what you want to see. Click `Check all listed` -- the button haloed in blue -- or close
-the panel, and everything comes back. See
-[Opening the panel hides everything](#opening-the-panel-hides-everything).
+way to what you want to see. Click `Check all listed` -- the button haloed in blue -- to put
+every listed class on screen, or close the panel, which puts back the view you had before you
+opened it. See [Opening the panel hides everything](#opening-the-panel-hides-everything).
 
 **I had classes hidden, and opening the panel cleared them.**
 Opening clears every class rule, including rules set from QuPath's own class list, because
-"hide everything" means an empty checked set. They are in the snapshot taken on the way in:
-right-click the toolbar button and choose `Restore the state from when the panel opened`.
+"hide everything" means an empty checked set. **Close the panel and they come back.** If you
+would rather have them back without closing it, right-click the toolbar button and choose
+`Restore the state from when the panel opened`.
+
+**I set up a filter in the panel and closing it threw my filter away.**
+That is the panel working as designed: closing restores the view you had before you opened it,
+so anything you built inside the session goes with it. Save the ones worth keeping as a
+[preset](#presets-a-view-you-named), or leave the panel open -- docked, if it is in the way --
+while you work. See
+[Closing the panel puts your view back](#closing-the-panel-puts-your-view-back).
+
+**"Could not put the view back to how it was before the panel opened."**
+The restore on close failed, so your view is wherever the panel left it rather than where you
+started. Right-click the toolbar button and choose `Restore the state from when the panel
+opened` to try again; `Reset all visibility` on the same menu is the fallback. This has not
+been seen to happen -- if it does, it is worth an issue.
 
 **Everything is invisible and I did not do anything.**
 The usual cause is `Show only checked classes` with nothing checked. With this extension
@@ -1551,7 +1663,8 @@ collapsed (**View > Show analysis pane**).
 
 **I docked it and now I want it floating again.**
 Use the same control in reverse, or right-click the tab and choose "Undock tab" -- QuPath's
-own gesture, which works on a docked panel just as it does on its built-in tabs.
+own gesture, which works on a docked panel just as it does on its built-in tabs. Neither move
+is a close, so nothing you have set is lost and nothing is restored.
 
 **The two lists are squashed together.**
 You have docked the panel, and the analysis pane is narrow. Widen it by dragging its divider,
@@ -1622,12 +1735,19 @@ a script and the panel are editing the same set, and each sees what the other di
 written by a script, or from QuPath's own class list, shows in the panel's `Active rules` with
 the source `Set elsewhere`.
 
-**With one exception, and it is the one to know: opening the panel clears the set.** The
-panel's opening state is `Show only checked classes` with nothing checked, so rules a script
-set beforehand are gone the moment you press the toolbar button. Open the panel first and run
-the script second if you want to see the script's rules in it; or use
-`Restore the state from when the panel opened` to get them back. Everything a script sets
-while the panel is already open is picked up live, as it always was.
+**With one exception, and it is the one to know: opening the panel clears the set, and closing
+it puts the set back.** The panel's opening state is `Show only checked classes` with nothing
+checked, so rules a script set beforehand are gone the moment you press the toolbar button --
+and they return the moment you close it, along with the mode, the exact-match flag, opacity,
+the cell display and the object-type toggles. Two consequences for a script:
+
+- **Open the panel first and run the script second** if you want to see the script's rules in
+  the panel. Everything a script sets while the panel is already open is picked up live, as it
+  always was. `Restore the state from when the panel opened` gets a script's earlier rules
+  back without closing the panel.
+- **A script that runs while the panel is open will have its writes undone when the panel
+  closes.** The restore replays the state from before the panel opened; it does not merge. If
+  a script is meant to leave a filter behind, close the panel before running it.
 
 Three things to know before you script it:
 

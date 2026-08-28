@@ -3,7 +3,7 @@
 Show or hide QuPath objects by class, or by one component of a class name, from a floating
 panel you can dock into QuPath's analysis pane.
 
-A QuPath 0.7 extension, version 0.1.0. It is a port of the community Groovy script
+A QuPath 0.7 extension, version 0.1.1. It is a port of the community Groovy script
 *"Show specific classes of objects v3"* ([image.sc topic 31828](https://forum.image.sc/t/31828)),
 which stopped working when `OverlayOptions.hiddenClassesProperty()` was removed.
 
@@ -105,17 +105,23 @@ population at a time. That is the workflow of the script this extension ports, a
 right way round for the data it is for: with thirty overlapping classes painted over each other
 there is nothing to see until most of them are gone.
 
-You are not left to work that out. The status strip says
+**The panel is a session, so closing it puts your view back.** Opening borrows your view and
+closing returns it: the class rules you had when you opened it, the visibility rule,
+`Exact matches only`, overlay opacity, the cell display, and which object types QuPath was
+showing all come back exactly as they were -- whether you checked anything while you were in
+there or not, and however you close it, including by quitting QuPath. Opening the panel to see
+what is in an image costs you nothing.
+
+That is why opening it can afford to clear things. **Opening also clears any class rules
+already in force**, including rules you set from QuPath's own class list -- an empty checked
+set is what "hide everything" means. Those rules come back when you close. While the panel is
+still open, *Restore the state from when the panel opened* brings them back without closing it.
+
+You are not left to work out the blank viewer either. The status strip says
 `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` the
 moment it happens; **`Check all listed` carries a blue halo** for as long as it is true, and
 one click on it puts every listed class back; and `Switch to "Hide checked classes"` and
-`Reset all` sit beside the message. Close the panel without checking anything and the mode
-goes back to `Hide checked classes`, so every object is visible again.
-
-One thing to know before the first press: **opening the panel also clears any class rules
-already in force**, including rules you set from QuPath's own class list. They are recorded in
-the snapshot taken on the way in, and *Restore the state from when the panel opened* brings
-them back.
+`Reset all` sit beside the message.
 
 **The toolbar button opens the panel as a window.** It sits immediately right of the
 brightness/contrast button, and it is drawn as an **eye**, slashed whenever classes are being
@@ -125,8 +131,8 @@ installing something. **Extensions > Class visibility > Show panel** does the sa
 
 If you would rather have it docked, click **Dock as tab** at the top right of the panel, and
 **Undock to window** to send it back. Both moves keep everything you have set -- your rules,
-the filter you typed, the sort you chose. Once docked, QuPath's own drag-the-tab-out gesture
-works too.
+the filter you typed, the sort you chose. Moving the panel is not closing it, so nothing is
+restored and no work is undone. Once docked, QuPath's own drag-the-tab-out gesture works too.
 
 Right-click the toolbar button for those two moves plus *Restore the state from when the panel
 opened*, a full reset, and help; **Extensions > Class visibility** carries the same items, so
@@ -145,31 +151,40 @@ tooltip states both facts in words.
 The panel starts closed in every session. It does not reopen itself at startup, in either
 shape.
 
-**Closing the panel does not clear your rules.** They are QuPath's state, not the panel's, and
-they stay in force with the panel gone -- but you are told, twice: a notification when you
-close the panel with rules set, and the toolbar button's tooltip, which always ends with how
-many class rules are in force. Hovering that button is the quickest way to answer "am I
-looking at everything?", and it works whether the panel is open, closed, or has never been
-opened.
+**A filter can still be in force with no panel open.** Class rules are QuPath's state, not the
+panel's: closing the panel puts back the rules you had when you opened it, and if that is a
+filter, it is still a filter. Rules set from QuPath's own class list, or from a script, are in
+force whether this panel has ever been opened or not. So the toolbar button reports them
+without being asked: **the eye goes slashed** whenever anything is being hidden by class, and
+its tooltip always ends with how many class rules are in force. Hovering that button is the
+quickest way to answer "am I looking at everything?", and it works whether the panel is open,
+closed, or has never been opened.
 
 ## If everything has disappeared
+
+The panel's own blanking is not one of the ways to get here any more: however you close it,
+your view comes back. What remains is everything else -- a class rule set from QuPath's own
+class list or from a script, an object type switched off in the **View** menu, opacity at
+zero, or a session in which this panel was never opened at all.
 
 While the panel is open it tells you: the status strip states in words whether anything is
 being hidden, and in the one state where every object is invisible it offers a button that
 puts it right in a single click.
 
-With the panel closed, there are two independent ways back. Both are in **two** places --
-the toolbar button's right-click menu and **Extensions > Class visibility** -- because toolbar
-insertion is best-effort and a recovery route with one door is the wrong design. Neither needs
-the panel open:
+There are two ways back, and both are in **two** places -- the toolbar button's right-click
+menu and **Extensions > Class visibility** -- because toolbar insertion is best-effort and a
+recovery route with one door is the wrong design. Neither needs the panel open:
 
 1. **`Reset all`** in the panel, or **Reset all visibility** in either menu. Both clear every
    rule, switch back to "Hide checked classes", and turn off "Exact matches only" -- the
-   same three things QuPath's own *Restore class visibility to default settings* does.
+   same three things QuPath's own *Restore class visibility to default settings* does. This
+   is the one to reach for when the trouble started before this panel did.
 2. **Restore the state from when the panel opened**, which puts back the snapshot taken
    automatically every time the panel opens -- including overlay opacity and which object
-   types QuPath is showing, not only the class rules. Nobody has to have planned ahead for
-   this one; the user guide describes what it covers.
+   types QuPath is showing, not only the class rules. It is now mostly an undo *while the
+   panel is open*: closing does the same restore for you. It still earns its place on the
+   menus, because it needs the panel open no more than the reset does, and because a close
+   that could not put your view back says so and points here.
 
 A **preset** is the third route and a different kind of thing: a view *you* named and saved
 into the project, chosen from the `Preset` combo in the panel header. Presets need forethought

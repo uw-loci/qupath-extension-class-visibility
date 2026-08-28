@@ -4,7 +4,7 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
-## 0.1.1 -- unreleased
+## 0.1.1
 
 **A behaviour change, and the reason for this release.** 0.1.0 is out and installed, so read
 this before upgrading: **the panel is now a session, and closing it puts your view back.**

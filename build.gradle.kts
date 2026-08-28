@@ -51,19 +51,14 @@ tasks.withType<JavaCompile> {
 
 tasks.test {
     useJUnitPlatform()
-    // Most tests (ClassHarvester, ClassCensus, VisibilityRuleModel) are
-    // deliberately JavaFX-free -- qupath-core types only. TWO are exceptions, and
-    // neither starts the JavaFX toolkit, which is why both run here with JavaFX on
-    // the plain classpath:
-    //   ViewerVisibilityContractTest constructs a real OverlayOptions to assert on
-    //     isHidden(PathObject), the predicate the painter consults. That touches
-    //     javafx.base observable collections and properties.
-    //   CloseGuardTest calls the static ClassVisibilityPane.applyCloseGuard, which
-    //     LOADS a javafx.scene.layout.BorderPane subclass -- javafx.graphics and
-    //     javafx.controls, not just javafx.base. Loading those classes is fine;
-    //     INSTANTIATING a Control is not, and would need the toolkit. That is the
-    //     line, and it is why the guard is a static method rather than an instance
-    //     one: QuPath shutdown has to run it with no panel alive anyway.
+    // The rule, rather than a roster that goes stale: a test here may TOUCH
+    // JavaFX but must never START the toolkit. Constructing an OverlayOptions
+    // (javafx.base collections and properties) is fine. LOADING a Pane subclass to
+    // call a static on it -- javafx.graphics and javafx.controls -- is also fine.
+    // INSTANTIATING a Control is not, and would need a toolkit. That line is why
+    // the state guards are static methods rather than instance ones: QuPath
+    // shutdown has to run them with no panel alive anyway, and a test can then run
+    // them with no toolkit alive.
     // Do not add --add-modules on the strength of that: these are classpath jars,
     // not modules, and the flag would fail to resolve them. If a future test needs
     // a real toolkit (Stage, Scene, Platform.startup), add:

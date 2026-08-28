@@ -55,6 +55,8 @@ import org.slf4j.LoggerFactory;
 import qupath.ext.classvisibility.core.ClassCensus;
 import qupath.ext.classvisibility.core.ClassHarvester;
 import qupath.ext.classvisibility.core.ClassVisibilityController;
+import qupath.ext.classvisibility.core.VisibilityPreset;
+import qupath.ext.classvisibility.core.VisibilityPresetStore;
 import qupath.ext.classvisibility.core.VisibilityRuleModel;
 import qupath.ext.classvisibility.core.VisibilityStateStore;
 import qupath.ext.classvisibility.preferences.ClassVisibilityPreferences;
@@ -62,8 +64,13 @@ import qupath.fx.dialogs.Dialogs;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.tools.ColorToolsFX;
 import qupath.lib.gui.viewer.OverlayOptions;
+import qupath.lib.common.GeneralTools;
 import qupath.lib.objects.classes.PathClass;
+import qupath.lib.projects.Project;
+import qupath.lib.projects.ResourceManager;
 
+import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -184,6 +191,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * it is QuPath's own {@code View -> Cell display}, put where the user is already looking.
      */
     private final ComboBox<OverlayOptions.DetectionDisplayMode> cellDisplayCombo = new ComboBox<>();
+
+    /** Named visibility presets stored in the project, and the two controls that manage them. */
+    private final ComboBox<String> presetCombo = new ComboBox<>();
+    private final Button presetSaveButton = new Button(Strings.get("button.presetSave"));
+    private final Button presetDeleteButton = new Button(Strings.get("button.presetDelete"));
     private final TextField findField = new TextField();
     private final Button clearFindButton = new Button(Strings.get("button.findClear"));
     private final Button refreshButton = new Button(Strings.get("button.refresh"));
@@ -200,9 +212,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
     private final Label modeLabel = new Label(Strings.get("label.mode"));
     private final Label cellDisplayLabel = new Label(Strings.get("label.cellDisplay"));
+    private final Label presetLabel = new Label(Strings.get("label.presets"));
     private final Label scopeLabel = new Label(Strings.get("label.scope"));
     private final Label findLabel = new Label(Strings.get("label.find"));
     private final HBox imageRow = new HBox(6);
+    private final HBox presetRow = new HBox(4);
+    /** One instance whose text follows whether a project is open. */
+    private final Tooltip presetTooltip = new Tooltip(Strings.get("tooltip.presets"));
     private final HBox scopeRow = new HBox(4);
     private final HBox findRow = new HBox(4);
     private final HBox exactWarningBox = new HBox(6);
@@ -238,6 +254,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private boolean countsUnknown = false;
     private boolean countsStale = false;
     private boolean updatingControls = false;
+    /** True while the preset combo is being repopulated, so its selection listener stands down. */
+    private boolean updatingPresets = false;
     /** True once the user has changed a rule; the panel's own opening state does not set it. */
     private boolean userChangedRules = false;
 
@@ -251,6 +269,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** Held so {@link #dispose()} can detach them from the session-lived shared options. */
     private ChangeListener<OverlayOptions.ClassVisibilityMode> modeListener;
     private ChangeListener<Boolean> exactListener;
+    /** Held for the same reason: QuPath's project property outlives every panel. */
+    private ChangeListener<Project<BufferedImage>> projectListener;
 
     private UndoEntry undoSlot;
     private PathClass soloedClass;
@@ -296,13 +316,16 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * is nothing to see until most of them are gone.</p>
      *
      * <p>Three things make it safe rather than alarming. The automatic snapshot is taken first,
-     * so <i>Restore visibility state</i> can put back whatever the user had. The status strip says
+     * so <i>Restore the state from when the panel opened</i> can put back whatever the user had. The status strip says
      * <b>[!] Every object is hidden</b> in words the moment it happens, with <i>Switch to "Hide
      * checked classes"</i> and <i>Reset all</i> beside it, and <i>Check all listed</i> is haloed
      * as the way back. And the close guard undoes the mode on the way out, so a user who never
      * checks anything is returned exactly where they started (finding R2).</p>
      */
     private void applyOpeningState() {
+        // Replace the snapshot rather than keeping an older one, so "Restore the state from when
+        // the panel opened" is literally true on the second opening as well as the first.
+        VisibilityStateStore.capture(options);
         beforeMutation();
         soloedClass = null;
         soloedComponent = null;
@@ -397,6 +420,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             options.useExactSelectedClassesProperty().removeListener(exactListener);
             exactListener = null;
         }
+        if (projectListener != null) {
+            qupath.projectProperty().removeListener(projectListener);
+            projectListener = null;
+        }
     }
 
     /**
@@ -452,6 +479,16 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         helpButton.setOnAction(e -> showHelpDialog());
         imageRow.getChildren().setAll(imageLabel, helpButton, surfaceButton);
         imageRow.setAlignment(Pos.CENTER_LEFT);
+
+        presetLabel.setLabelFor(presetCombo);
+        presetCombo.setMaxWidth(Double.MAX_VALUE);
+        presetCombo.setTooltip(presetTooltip);
+        presetCombo.setAccessibleText(Strings.get("label.presets"));
+        presetSaveButton.setTooltip(new Tooltip(Strings.get("tooltip.button.presetSave")));
+        presetDeleteButton.setTooltip(new Tooltip(Strings.get("tooltip.button.presetDelete")));
+        HBox.setHgrow(presetCombo, Priority.ALWAYS);
+        presetRow.getChildren().setAll(presetLabel, presetCombo, presetSaveButton, presetDeleteButton);
+        presetRow.setAlignment(Pos.CENTER_LEFT);
 
         ToggleGroup modeGroup = new ToggleGroup();
         hideRadio.setToggleGroup(modeGroup);
@@ -515,7 +552,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         scopeRow.setAlignment(Pos.CENTER_LEFT);
         filterRow.setAlignment(Pos.CENTER_LEFT);
 
-        VBox header = new VBox(4, imageRow, modeAndDisplayRow, exactWarningBox, filterBox);
+        VBox header = new VBox(4, imageRow, presetRow, modeAndDisplayRow, exactWarningBox, filterBox);
         header.setPadding(new Insets(0, 0, 6, 0));
         setTop(header);
 
@@ -981,6 +1018,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
         findField.textProperty().addListener((obs, oldValue, newValue) -> applyFilter(newValue));
 
+        wirePresets();
+
         anyRadio.setOnAction(e -> setCombination(VisibilityRuleModel.Combination.ANY));
         allRadio.setOnAction(e -> setCombination(VisibilityRuleModel.Combination.ALL));
 
@@ -1217,6 +1256,179 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             node = node.getParent();
         }
         return false;
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Named presets, stored in the project
+    // ------------------------------------------------------------------------------------------
+
+    /**
+     * Wire the preset combo and its two buttons.
+     *
+     * <p>Selecting a preset applies it immediately, which is what the Brightness &amp; Contrast
+     * settings combo does and what a list of named views is for. It goes through
+     * {@link #pushUndo(String)} like every other bulk change, so a preset applied by accident is
+     * one click from being undone.</p>
+     */
+    private void wirePresets() {
+        presetCombo.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) -> {
+            if (updatingPresets) {
+                return;
+            }
+            presetDeleteButton.setDisable(newValue == null);
+            if (newValue != null) {
+                applyPreset(newValue);
+            }
+        });
+        presetSaveButton.setOnAction(e -> promptToSavePreset());
+        presetDeleteButton.setOnAction(e -> promptToDeletePreset());
+        // The project can change under an open panel, and its presets change with it.
+        projectListener = (obs, oldValue, newValue) -> refreshPresets();
+        qupath.projectProperty().addListener(projectListener);
+        refreshPresets();
+    }
+
+    /**
+     * Re-read the preset names from the project and re-enable the controls to match.
+     *
+     * <p>The combo is <b>not</b> disabled when a project has none saved -- JavaFX shows no
+     * tooltip on a disabled control, so the state that most needs explaining would be the one
+     * that cannot explain itself. It says so in its prompt text instead, which is always
+     * visible.</p>
+     */
+    private void refreshPresets() {
+        Project<BufferedImage> project = qupath.getProject();
+        boolean hasProject = VisibilityPresetStore.managerFor(project) != null;
+        List<String> names = VisibilityPresetStore.names(project);
+        updatingPresets = true;
+        try {
+            String selected = presetCombo.getSelectionModel().getSelectedItem();
+            presetCombo.getItems().setAll(names);
+            if (selected != null && names.contains(selected)) {
+                presetCombo.getSelectionModel().select(selected);
+            } else {
+                presetCombo.getSelectionModel().clearSelection();
+            }
+        } finally {
+            updatingPresets = false;
+        }
+        presetCombo.setPromptText(hasProject
+                ? (names.isEmpty() ? Strings.get("prompt.presets.none") : Strings.get("prompt.presets"))
+                : Strings.get("prompt.presets.noProject"));
+        presetSaveButton.setDisable(!hasProject);
+        presetDeleteButton.setDisable(!hasProject
+                || presetCombo.getSelectionModel().getSelectedItem() == null);
+        // One Tooltip whose text changes, not a new one installed per refresh: installing
+        // repeatedly stacks behaviours on the same node. The buttons are disabled without a
+        // project and JavaFX shows no tooltip on a disabled control, so the reason lives on the
+        // combo, which stays enabled, and in its prompt text.
+        presetTooltip.setText(hasProject
+                ? Strings.get("tooltip.presets")
+                : Strings.get("tooltip.presets.noProject"));
+    }
+
+    private void applyPreset(String name) {
+        ResourceManager.Manager<VisibilityPreset> manager =
+                VisibilityPresetStore.managerFor(qupath.getProject());
+        if (manager == null) {
+            return;
+        }
+        try {
+            VisibilityPreset preset = manager.get(name);
+            pushUndo(Strings.format("action.applyPreset", name));
+            soloedClass = null;
+            soloedComponent = null;
+            preset.restore(options, model);
+            logger.info("Applied class visibility preset '{}'", name);
+        } catch (IOException | RuntimeException ex) {
+            // A preset hand-edited into invalid JSON is a plausible failure, and it must not take
+            // the panel with it.
+            logger.error("Could not read visibility preset '{}': {}", name, ex.getMessage(), ex);
+            Dialogs.showErrorMessage(Strings.get("notify.title"),
+                    Strings.format("error.presetLoad", name));
+        }
+    }
+
+    private void promptToSavePreset() {
+        ResourceManager.Manager<VisibilityPreset> manager =
+                VisibilityPresetStore.managerFor(qupath.getProject());
+        if (manager == null) {
+            return;
+        }
+        String suggested = presetCombo.getSelectionModel().getSelectedItem();
+        String name = Dialogs.showInputDialog(Strings.get("dialog.presetName.title"),
+                Strings.get("dialog.presetName.prompt"), suggested == null ? "" : suggested);
+        if (name == null) {
+            return;
+        }
+        name = name.strip();
+        if (name.isEmpty()) {
+            return;
+        }
+        // The name becomes a filename on disk, so a name QuPath cannot write is refused here
+        // with the reason, rather than at the write with a stack trace.
+        if (!GeneralTools.isValidFilename(name)) {
+            Dialogs.showErrorMessage(Strings.get("dialog.presetName.title"),
+                    Strings.format("error.presetName", name));
+            return;
+        }
+        try {
+            if (manager.contains(name) && !Dialogs.showConfirmDialog(
+                    Strings.get("dialog.presetOverwrite.title"),
+                    Strings.format("dialog.presetOverwrite.message", name))) {
+                return;
+            }
+            manager.put(name, VisibilityPreset.capture(name, options, model));
+            logger.info("Saved class visibility preset '{}'", name);
+            refreshPresets();
+            selectPresetQuietly(name);
+            Dialogs.showInfoNotification(Strings.get("notify.title"),
+                    Strings.format("notify.presetSaved", name));
+        } catch (IOException ex) {
+            logger.error("Could not save visibility preset '{}': {}", name, ex.getMessage(), ex);
+            Dialogs.showErrorMessage(Strings.get("notify.title"),
+                    Strings.format("error.presetSave", name));
+        }
+    }
+
+    private void promptToDeletePreset() {
+        ResourceManager.Manager<VisibilityPreset> manager =
+                VisibilityPresetStore.managerFor(qupath.getProject());
+        String name = presetCombo.getSelectionModel().getSelectedItem();
+        if (manager == null || name == null) {
+            return;
+        }
+        if (!Dialogs.showConfirmDialog(Strings.get("dialog.presetDelete.title"),
+                Strings.format("dialog.presetDelete.message", name))) {
+            return;
+        }
+        try {
+            manager.remove(name);
+            logger.info("Deleted class visibility preset '{}'", name);
+            refreshPresets();
+            Dialogs.showInfoNotification(Strings.get("notify.title"),
+                    Strings.format("notify.presetDeleted", name));
+        } catch (IOException ex) {
+            logger.error("Could not delete visibility preset '{}': {}", name, ex.getMessage(), ex);
+            Dialogs.showErrorMessage(Strings.get("notify.title"),
+                    Strings.format("error.presetDelete", name));
+        }
+    }
+
+    /**
+     * Select a preset without applying it.
+     *
+     * @param name the preset just saved. It already <i>is</i> the current view, so re-applying it
+     *        would repaint for nothing and push an undo entry for a change that did not happen.
+     */
+    private void selectPresetQuietly(String name) {
+        updatingPresets = true;
+        try {
+            presetCombo.getSelectionModel().select(name);
+        } finally {
+            updatingPresets = false;
+        }
+        presetDeleteButton.setDisable(false);
     }
 
     private void soloClass(ClassRow row) {

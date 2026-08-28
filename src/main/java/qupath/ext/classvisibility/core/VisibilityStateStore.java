@@ -5,7 +5,16 @@ import org.slf4j.LoggerFactory;
 import qupath.lib.gui.viewer.OverlayOptions;
 
 /**
- * Session-scoped holder for one {@link VisibilitySnapshot}.
+ * Session-scoped holder for the one automatic snapshot: the state the panel found when it opened.
+ *
+ * <p><b>This is the recovery route, not a save feature.</b> Named presets stored in the project
+ * ({@link VisibilityPreset}) superseded the manual single-slot save, and this deliberately
+ * survived them. They serve different people: a preset is a workflow tool that requires the user
+ * to have thought ahead, while this exists for the user who has hidden everything and does not
+ * know how -- who, by definition, saved no preset (finding C1). There is nothing to press, which
+ * is the whole point.</p>
+ *
+ * <p>Holder for one {@link VisibilitySnapshot}.
  *
  * <p>Static because the snapshot must outlive the panel. The tab can be removed and re-added,
  * and the toolbar button's context menu offers <i>Restore visibility state</i> whether or not
@@ -33,23 +42,29 @@ public final class VisibilityStateStore {
     }
 
     /**
-     * Take a snapshot now, replacing any previous one. This is the explicit
-     * <i>Save visibility state</i> action.
+     * Take a snapshot now, replacing any previous one. Called when the panel opens.
+     *
+     * <p>Replacing rather than keeping the first is what makes <i>Restore the state from when the
+     * panel opened</i> mean what it says. A user who built a view in one panel session, closed
+     * the panel and opened it again -- which hides everything -- wants their way back to be that
+     * view, not to whatever the session started with an hour earlier.</p>
      *
      * @param options the options to snapshot
      */
-    public static synchronized void save(OverlayOptions options) {
+    public static synchronized void capture(OverlayOptions options) {
         snapshot = VisibilitySnapshot.capture(options);
-        logger.info("Saved visibility state ({} class rules, mode {})",
+        logger.info("Captured visibility snapshot at panel open ({} class rules, mode {})",
                 snapshot.selectedClasses().size(), snapshot.visibilityMode());
     }
 
     /**
      * Take a snapshot only if none exists yet.
      *
-     * <p>Called before the panel's first mutation in a session. That is what makes
-     * <i>Restore visibility state</i> a recovery route rather than a power-user feature: the
-     * person who needs it is the person who did not plan ahead.</p>
+     * <p>The panel replaces the snapshot outright when it opens, so this covers the other
+     * route: the recovery actions on the Extensions menu and the toolbar context menu, which work
+     * whether or not the panel has ever been opened. That is what makes restore a recovery route
+     * rather than a power-user feature -- the person who needs it is the person who did not plan
+     * ahead.</p>
      *
      * @param options the options to snapshot
      */

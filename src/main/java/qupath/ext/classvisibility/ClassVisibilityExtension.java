@@ -191,15 +191,13 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         // is always present.
         restoreStateMenuItem = new MenuItem(Strings.get("menu.restoreState"));
         restoreStateMenuItem.setOnAction(e -> restoreVisibilityState());
-        MenuItem saveStateItem = new MenuItem(Strings.get("menu.saveState"));
-        saveStateItem.setOnAction(e -> saveVisibilityState());
         MenuItem resetAllItem = new MenuItem(Strings.get("menu.resetAll"));
         resetAllItem.setOnAction(e -> resetAllVisibility());
 
         MenuItem helpItem = new MenuItem(Strings.get("menu.help"));
         helpItem.setOnAction(e -> showHelp());
         menu.getItems().addAll(showHideMenuItem, new SeparatorMenuItem(),
-                restoreStateMenuItem, saveStateItem, resetAllItem,
+                restoreStateMenuItem, resetAllItem,
                 new SeparatorMenuItem(), helpItem);
         // The labels are recomputed as the menu opens, for the same reason the toolbar tooltip is:
         // "is the panel visible" also changes when the user selects another analysis tab or
@@ -238,11 +236,6 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         } else {
             Dialogs.showWarningNotification(Strings.get("notify.title"), Strings.get("notify.noStateSaved"));
         }
-    }
-
-    private void saveVisibilityState() {
-        VisibilityStateStore.save(OverlayOptions.getSharedInstance());
-        Dialogs.showInfoNotification(Strings.get("notify.title"), Strings.get("notify.stateSaved"));
     }
 
     /** Mirrors QuPath's own restoreClassVisibilityDefaults(): mode, exact flag and set, in order. */
@@ -854,10 +847,6 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
                 !hasSnapshot);
         restore.setOnAction(e -> restoreVisibilityState());
 
-        CustomMenuItem save = menuItem(Strings.get("menu.saveState"),
-                Strings.get("tooltip.menu.saveState"), false);
-        save.setOnAction(e -> saveVisibilityState());
-
         CustomMenuItem resetAll = menuItem(Strings.get("menu.resetAll"),
                 Strings.get("tooltip.menu.resetAll"), false);
         resetAll.setOnAction(e -> resetAllVisibility());
@@ -884,7 +873,6 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
 
         menu.getItems().addAll(
                 restore,
-                save,
                 new SeparatorMenuItem(),
                 resetAll,
                 new SeparatorMenuItem(),

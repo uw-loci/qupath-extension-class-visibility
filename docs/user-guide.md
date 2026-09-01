@@ -24,16 +24,22 @@ Most of this guide is in collapsible sections, and your browser's find-in-page d
 search inside a collapsed one. This index is deliberately left open, so searching this page
 for the message on your screen finds it here.
 
+**Where the panel puts these.** The warning `[!] Every object is hidden`, the note about a
+component that is in nearly every class, and the buttons are on the always-visible strip at
+the bottom. The routine "what is in force" sentences -- the `[OK]` and `[i]` ones -- are
+inside the **`Active rules`** expander just above it, whose title carries the count without
+being opened.
+
 | The panel says | What it means |
 |---|---|
 | `[OK] No class rules active -- nothing is hidden by class.` | No class rule is in force. Note what it does **not** say: if your viewer is still blank, the cause is not a class rule -- see [It might not be a class rule at all](#it-might-not-be-a-class-rule-at-all). |
-| `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` | **Expected the moment you open the panel** -- that is how it starts, so you can check your way to what you want to see. See [Opening the panel hides everything](#opening-the-panel-hides-everything). If you did not just open the panel, see [If everything disappears](#if-everything-disappears). Either way, `Check all listed` is haloed in blue and one click on it puts everything back. |
+| `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` | **Expected the moment you open the panel** -- that is how it starts, so you can check your way to what you want to see. See [Opening the panel hides everything](#opening-the-panel-hides-everything). If you did not just open the panel, see [If everything disappears](#if-everything-disappears). Either way, the check box at the top of the classes list is haloed in blue and one click on it puts everything back. |
 | `[i] 1 rule active -- objects in that class are hidden, in every object type.` | Normal `Hide checked classes` operation. "In every object type" is not decoration -- see [`List` chooses what you see here](#list-chooses-what-you-see-here-not-what-gets-hidden). |
 | `[i] 1 rule active -- only objects matching it are shown.` | Normal `Show only checked classes` operation. |
 | `[i] Showing only CD3: CD8 and any class containing all of its parts. Everything else is hidden.` | You soloed a class row that has supersets in this image -- see [Show only one class](#show-only-one-class) and [What a checked class row acts on](#what-a-checked-class-row-acts-on). |
 | `[i] Showing only classes containing CD8. Everything else is hidden.` | You soloed a component row. |
 | `[i] Showing only CD3: CD8. Everything else is hidden.` | You soloed something that reaches nothing beyond itself -- an exact rule, or a class with no supersets in this image. |
-| `1 rule has no class in this image.` | A rule for a class the current image does not carry. It is still in force -- see [Working across several images](#working-across-several-images). |
+| `1 rule matches nothing listed above.` | A rule that reaches none of the objects in the lists as they stand -- usually a rule for a class the current image does not carry. It is still in force -- see [Working across several images](#working-across-several-images). This is inside the `Active rules` expander, with the rest of the routine status. |
 | `[i] 2 rules active -- they apply to every image.` | No image is open, and rules are still set. |
 | `[!] "Exact matches only" is on. ...` | A QuPath-wide setting is blocking component rules -- see [One QuPath setting can switch the component list off](#one-qupath-setting-can-switch-the-component-list-off). |
 | `Counting classes in ... ` | A recount is running. On a very large image, see [Work on a very large image](#work-on-a-very-large-image-without-the-panel-slowing-you-down). |
@@ -43,8 +49,11 @@ for the message on your screen finds it here.
 | `Switched "Show only checked classes" back to "Hide checked classes" ...` | The guard fired on a setting you made -- see [What the panel does about it](#what-the-panel-does-about-it). |
 | `Put the view back to how it was before this panel touched anything.` | `Restore the state from when the panel opened` ran -- see [If everything disappears](#if-everything-disappears). |
 | `Saved the preset "T cells" to this project.` / `Deleted the preset "T cells".` | A named view was written into, or removed from, the project -- see [Presets: a view you named](#presets-a-view-you-named). |
-| `Composite -- not in QuPath's class list` (in `Active rules`) | An `All` combination. Expected -- see [One thing to expect in QuPath's Annotations pane](#one-thing-to-expect-in-qupaths-annotations-pane). |
+| `Matches classes listed above` (in `Active rules`) | The rule has no row of its own in the classes list, but it reaches classes that do -- normal on multiplexed data, and normal for every `All` combination. See [What a checked class row acts on](#what-a-checked-class-row-acts-on) and [One thing to expect in QuPath's Annotations pane](#one-thing-to-expect-in-qupaths-annotations-pane). |
+| `Matches nothing listed above` (in `Active rules`) | The rule is in force and reaches nothing here. Most often a rule for a class this image does not carry -- see [Working across several images](#working-across-several-images). |
 | `Already set by the component rule below. ...` | A class row is checked and disabled because a component rule already covers it -- see [How the two lists combine](#how-the-two-lists-combine). |
+| `No rules are active, and "Show only checked classes" is on, so every object is hidden. Check a class above to see it.` (in `Active rules`) | The empty `Active rules` table, in the state the panel opens in. Expected -- see [Opening the panel hides everything](#opening-the-panel-hides-everything). |
+| `No rules are active. Every object is visible.` (in `Active rules`) | The empty `Active rules` table under `Hide checked classes`, where no rules really does mean nothing hidden. If your viewer is still blank, the cause is not a class rule -- see [It might not be a class rule at all](#it-might-not-be-a-class-rule-at-all). |
 
 ---
 
@@ -88,9 +97,9 @@ Four things make it recoverable rather than alarming:
 
 - the status strip says it in words the moment it happens --
   `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.`;
-- **`Check all listed` carries a blue halo** for exactly as long as that is true, and its
-  tooltip opens `Everything is hidden right now. This shows it all again`. One click puts every
-  listed class on screen;
+- **the check box in the classes list's header carries a blue halo** for exactly as long as
+  that is true, and its tooltip opens `Everything is hidden right now. This shows it all
+  again`. One click puts every listed class on screen;
 - beside the status message are `Switch to "Hide checked classes"` and `Reset all`, either of
   which ends the state;
 - **the whole view you had was recorded on the way in**, and
@@ -201,15 +210,14 @@ Top to bottom, the panel is:
 | `Preset:` | A combo of the views saved in this project, with `Save` and `Delete`. Choosing one applies it immediately. Empty, and disabled apart from the combo, when no project is open. See [Presets: a view you named](#presets-a-view-you-named). |
 | `Visibility rule:` | Two radio buttons, `Hide checked classes` and `Show only checked classes`. The panel opens on the second one -- see [Opening the panel hides everything](#opening-the-panel-hides-everything) and [below](#hide-checked-classes-vs-show-only-checked-classes). |
 | `Exact matches only` | A QuPath-wide setting. While it is on, the whole component half of the panel is greyed out. See [below](#one-qupath-setting-can-switch-the-component-list-off). |
-| `Cell display:` | Beside the visibility rule, wrapping onto its own line when the panel is narrow. How cells are drawn: `Cell boundaries only`, `Nuclei only`, `Nuclei & cell boundaries`, `Cell centroids only`. This is QuPath's own `View > Cell display` setting -- see [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn). |
+| `Cell visibility is also affected by Cell display settings -- see QuPath's View menu.` | A line of text under the visibility rule, and a pointer rather than a control. Cell display is QuPath's own setting and has nothing to do with classes, but it can make cells look wrong in a way that is easily blamed on this panel -- see [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn). |
 | `List:` | Which objects are counted and listed -- `Detections`, `Cells`, `Annotations` or `All objects`. It chooses what you *see in this panel*, never what gets hidden. See [the next section](#list-chooses-what-you-see-here-not-what-gets-hidden). |
 | `Find:` | One filter field over both lists. Case-insensitive, matches anywhere in the name, and the matched text is shown in **bold** in the rows that survive. |
-| `Auto-refresh counts` | On by default. Turn it off on very large images to keep the panel responsive; the count header then reads `Count (stale)` and a `Refresh` button appears. |
-| Classes list | Headed `Classes on detections in this image (28)`. One row per class present in the image, with a checkbox, a **colour swatch** and the name, then a `Count` and an **`Affects`**. `Count` is how many objects carry this class; `Affects` is how many a click on the row would actually hide or show, which can be larger -- see [What a checked class row acts on](#what-a-checked-class-row-acts-on). Sorted by `Count` descending by default. Below it: `Check all listed` and `Uncheck all listed`. |
-| Components list | Headed `Anything containing these components (17)`, which is what checking a row does. One row per component, with a checkbox, the name, a **`Spread`** and a `Count`. Sorted by name, alphabetically, by default. |
+| Classes list | Headed `Classes on detections in this image (28)`. One row per class present in the image, with a checkbox, a **colour swatch** and the name, then an **`Affects`** -- how many objects a click on the row would actually hide or show. Sorted by `Affects` descending by default. A **`Count`** column, objects carrying exactly this class, is off by default and one click away in the column menu button; the two are different numbers and the gap is the point -- see [What a checked class row acts on](#what-a-checked-class-row-acts-on). The **checkbox column's header holds a check box of its own**, which checks or unchecks everything currently listed. |
+| Components list | Headed `Anything containing these components (17)`, which is what checking a row does. One row per component, with a checkbox, the name and a `Count`. Sorted by name, alphabetically, by default. A **`Spread`** column is off by default, in the same column menu button -- see [The `Spread` column](#the-spread-column-how-many-classes-a-component-covers). |
 | `Checked components combine as:` | The `Any` / `All` radios. Only meaningful from two checked components onward. |
-| `Active rules` | An expander listing every rule in force, including rules with no row in the lists above. |
-| Status strip | Always visible, always true. Says how many rules are active and what that means, and carries `Undo` and `Reset all`. `Undo` is one step deep and always names the step -- `Undo "Check CD8"`, `Undo "Show only CD3: CD8"`, `Undo "Reset all"` -- so it is never a guess. Every action reaches it: single rows, the bulk buttons, a solo, an applied preset, and `Reset all` alike. |
+| `Active rules` | An expander listing every rule in force, including rules with no row in the lists above. Its title carries the count -- `Active rules (3)` -- without opening it, and the sentence saying what that means in words is inside. See [See every rule in force](#see-every-rule-in-force-including-invisible-ones). |
+| Status strip | Always visible, and it holds the things you cannot afford to miss: the `[!] Every object is hidden` warning, the note that fires when you check a component that is in nearly every class, and the buttons -- `Undo`, `Reset all`, `Switch to "Hide checked classes"`. `Undo` is one step deep and always names the step -- `Undo "Check CD8"`, `Undo "Show only CD3: CD8"`, `Undo "Reset all"` -- so it is never a guess. Every action reaches it: single rows, the header check box, a solo, an applied preset, and `Reset all` alike. When there is nothing to say and no button to offer, the strip leaves the layout rather than holding a blank line open. The routine "what is in force" sentence is inside `Active rules`, above it. |
 
 Every control applies immediately. There is no `Apply` button, and nothing here needs
 saving.
@@ -241,14 +249,16 @@ rows appear.
    disappear.** The mode radio sits on **`Show only checked classes`**, nothing is checked,
    and the status strip reads
    `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.`
-   `Check all listed` is haloed in blue. This is the panel's starting state -- see
+   The check box at the top of the classes list is haloed in blue. This is the panel's
+   starting state -- see
    [Opening the panel hides everything](#opening-the-panel-hides-everything).
 2. In the **Components** list, check one row -- say `CD8`. Every class containing `CD8` is now
-   the only thing on screen, and the strip reads
+   the only thing on screen, and the halo and the warning both go. `Active rules` now reads
+   `Active rules (1)`; open it and the sentence inside says
    `[i] 1 rule active -- only objects matching it are shown.`
-   (One checked component is **one rule**, however many class names it covers. The strip says
-   "class" because `CD8` is handed to QuPath as a class in its own right, and QuPath matches
-   every class containing it -- see
+   (One checked component is **one rule**, however many class names it covers. It says "class"
+   because `CD8` is handed to QuPath as a class in its own right, and QuPath matches every
+   class containing it -- see
    [What "contains" means, precisely](#what-contains-means-precisely).)
 3. Check a second component -- say `PD1`. With the combination on `Any`, which is the default,
    you now see everything CD8-positive **plus** everything PD1-positive. Switch
@@ -260,7 +270,8 @@ rows appear.
    the strip names what you soloed. Double-click the same row again to undo it, or press the
    `Undo` button in the status strip, which says what it will undo:
    `Undo "Show only CD3: CD8"`.
-6. **`Check all listed`** brings every listed class back on screen. **Closing the panel**
+6. **The check box in the classes list's header** brings every listed class back on screen.
+   **Closing the panel**
    does something different and usually better: it puts back the view you had *before* step 1,
    whatever that was -- see
    [Closing the panel puts your view back](#closing-the-panel-puts-your-view-back).
@@ -337,7 +348,7 @@ There is one panel, and it lays itself out two ways depending on how much width 
   by side, classes on the left and components on the right, with a divider you can drag.
 - **Narrow** (roughly 580 px and below, which is the usual docked width): the two lists
   stack vertically, classes above components, again with a draggable divider. The mode radios
-  stack, the `Cell display` combo wraps onto its own line, and the classes header shortens --
+  stack, the cell-display note wraps onto more lines, and the classes header shortens --
   `Classes on detections (3 of 28)` rather than
   `Classes on detections in this image (3 of 28)`. Nothing is lost: the panel's whole subject
   is the current image, and the `Image:` label one line above says which. The components
@@ -346,10 +357,11 @@ There is one panel, and it lays itself out two ways depending on how much width 
 The two thresholds differ on purpose, so the layout does not flicker back and forth while
 you drag a window edge or the analysis pane's divider through the switch point.
 
-Squeezed narrower still, the class list drops its `Affects` column and the component list
-drops its `Spread` column -- the two that are orienting information rather than the thing you
-came to click. Both are recoverable: every table has a column menu button in its header for
-putting columns back, and you can also just make the panel wider.
+No column is dropped as the panel narrows. `Affects` used to be, back when the classes list
+carried four columns and long class names had nothing left; with `Count` off by default the
+names have that room anyway, and `Affects` is the one number on the row that says what a click
+will do. If a class name is still being cut off, widen the panel or drag the divider between
+the two lists.
 
 ### If you docked it and it seems to have gone
 
@@ -412,7 +424,7 @@ usually is -- five or six things, which is what "combinatorial" means.
 
 Say your image carries these six classes, and you check the row `CD3: CD8`:
 
-| Class in the image | `Count` | Acted on, by default | With `Exact matches only` on | Why |
+| Class in the image | `Count` (off by default) | Acted on, by default | With `Exact matches only` on | Why |
 |---|---|---|---|---|
 | `CD3: CD8` | 412 | yes | yes | it is that class |
 | `CD8: CD3` | 51 | yes | yes | order is never significant |
@@ -425,26 +437,35 @@ The row you clicked shows `Count 412`. What actually disappears is 2,547.
 
 ### `Count` and `Affects`
 
-That gap is why the class list has **two** number columns:
+That gap is why the classes list has **two** number columns, only one of which is on screen
+by default:
 
-| Column | What it counts |
-|---|---|
-| **`Count`** | objects carrying **exactly** this class -- 412 |
-| **`Affects`** | objects a click on this row would hide or show **right now** -- 2,547 |
+| Column | What it counts | On screen |
+|---|---|---|
+| **`Affects`** | objects a click on this row would hide or show **right now** -- 2,547 | yes |
+| **`Count`** | objects carrying **exactly** this class -- 412 | off by default |
+
+**`Affects` is the one you get**, because it is the one that answers the question you are
+about to act on. `Count` is one click away in the **column menu button** -- the small button
+at the right-hand end of the table's header row -- and turning it on is worth doing exactly
+when you want to see the gap above for yourself, on your own data. Nothing about either number
+changed when `Count` was moved off the default view.
 
 `Affects` follows the current settings rather than describing an idea: turn on
 `Exact matches only` and it drops to match `Count`, because that is genuinely what the click
-would then do. It renders in **bold** whenever it is larger than `Count`, which is the panel
-saying *this row reaches further than it looks*. When the two are equal it is plain, and on a
-small project they will usually be equal all the way down the list.
+would then do. **It renders in bold whenever it is larger than `Count`** -- the panel saying
+*this row reaches further than it looks* -- and that emphasis works whether or not you have the
+`Count` column on, which is what makes hiding that column safe. Turning `Count` on is how you
+see by how much. When the two are equal `Affects` is plain, and on a small project they will
+usually be equal all the way down the list.
 
 `Affects` is the number to trust for a decision and the number to read after a surprise.
 `Count` is still the honest answer to "how many cells are `CD3: CD8`", which is the question a
 figure legend usually asks -- but take a figure's numbers from a measurement table, which
 visibility never touches, rather than from either column here.
 
-(Both columns are dropped when the panel gets very narrow, `Affects` first. The column menu
-button in the table header puts them back.)
+(Neither column is dropped when the panel gets narrow. `Affects` used to be, and is not any
+more -- it is the number the row is about.)
 
 **`Exact matches only` narrows a class row to the class itself.** That checkbox is QuPath's
 own setting rather than the panel's, and it has a second effect you probably do not want as a
@@ -454,7 +475,7 @@ If you need exact class rows *and* component rules in the same session, you cann
 at once.
 
 **Soloing a row inherits all of this**, and says so. Showing only `CD3: CD8` shows that class
-and its supersets, and the status strip reads
+and its supersets, and the sentence inside `Active rules` reads
 `[i] Showing only CD3: CD8 and any class containing all of its parts. Everything else is
 hidden.` -- the longer wording appears exactly when the shorter one would be false. If the
 class has no supersets in this image, you get the short version instead.
@@ -494,9 +515,16 @@ names rather than characters.
 
 ### The `Spread` column: how many classes a component covers
 
-Each component row carries a **`Spread`** figure such as `6/28`: how many of this image's
+Each component row can carry a **`Spread`** figure such as `6/28`: how many of this image's
 classes contain that component. It is not an object count -- the `Count` column is the object
 count.
+
+**`Spread` is off by default**, in the **column menu button** at the right-hand end of the
+component list's header row. It is a diagnostic about how discriminating a component is, not
+an answer to "what will this click do", and the warning it carries also fires at the moment
+you click such a row, in the status strip and in the row's own tooltip -- so you are not
+relying on having turned the column on. Turn it on when you are sizing up an unfamiliar
+naming scheme and want the whole list ranked at a glance.
 
 Two things about the denominator, because both can shift a ratio:
 
@@ -538,16 +566,20 @@ This is not a bug -- not in the script and not here. `positive` genuinely *is* p
 those classes, and the matching rule has no way to know you meant it as a suffix rather
 than as a marker.
 
-The panel tells you before you click rather than after. A component present in at least 80%
-of the image's classes has its `Spread` figure shown in **bold**, and its row tooltip
-states the scope plainly:
+The panel warns you about it, in three places, none of which stops you. **Hovering the row**
+states the scope plainly, whatever columns you have on:
 
 > `In 26 of the 28 classes in this image, and 401,552 of 452,110 objects.`
 
-That is the whole treatment: a ratio, in bold, at the point where you are deciding. The panel
-does not tell you not to click. Checking `positive` to get everything positive is a legitimate thing to want, and it
-is a fast way to get it. (The emphasis is suppressed entirely on images with fewer than
-five classes, where `3/3` means nothing.)
+**Turn the `Spread` column on** and a component present in at least 80% of the image's classes
+shows its ratio in **bold**, so the whole list is scannable at once without hovering anything.
+(That emphasis is suppressed entirely on images with fewer than five classes, where `3/3`
+means nothing.) And after the click, the status strip says the same thing in the same numbers
+-- see below.
+
+That is the whole treatment: a ratio, at the point where you are deciding, and again at the
+point where you acted. The panel does not tell you not to click. Checking `positive` to get
+everything positive is a legitimate thing to want, and it is a fast way to get it.
 
 Two things follow:
 
@@ -558,9 +590,10 @@ Two things follow:
   to any other component gives you nearly the whole image. This is the single most common
   reason for "I checked one more thing and got *more* cells than before".
 
-When checking such a component does empty most of the viewer, the status strip says so
-after the fact as well:
-`"positive" is in 26 of 28 classes and 401,552 of 452,110 objects.`
+When checking such a component does empty most of the viewer, the status strip says so after
+the fact as well: `"positive" is in 26 of 28 classes and 401,552 of 452,110 objects.` That note
+is on the always-visible strip rather than inside the `Active rules` expander, precisely
+because it is a reply to the click you just made -- it clears again on the next one.
 
 ### Unclassified objects
 
@@ -745,9 +778,15 @@ In `All` mode the panel expresses your choice to QuPath as a single combined cla
 list of available classes, so QuPath's own class list has no row to highlight and will look
 as though nothing is selected, even while objects are being hidden.
 
-This is expected. The panel's `Active rules` expander lists that rule with the status
-`Composite -- not in QuPath's class list`, the status strip counts it, and `Reset all` clears
-it.
+This is expected. The panel's `Active rules` expander lists the rule and, in its `Status`
+column, says whether it is reaching anything: `Matches classes listed above` while it is doing
+its job. The `Source` column reads `Components (All)`, so what kind of rule it is has already
+been said twice by the time you reach the status. `Reset all` clears it.
+
+(Through 0.1.2 the status column read `Composite -- not in QuPath's class list` instead, and
+the status strip simultaneously counted the same rule as having no class in the image. Both
+were true statements about set membership and neither was an answer to "is this rule doing
+anything" -- see the [0.2.0 entry in the changelog](../CHANGELOG.md#020).)
 
 **`Active rules` does not dress that composite up as a class.** Check `CD8` and `CD45` and the
 rule reads **`CD45 + CD8 (all components)`**, not `CD45: CD8` -- the `+` and the suffix are
@@ -832,10 +871,17 @@ nothing of ours got to run.
 
 ## `Cell display`: how cells are drawn
 
-The **`Cell display:`** combo in the header is a second face for QuPath's own
-**`View > Cell display`** menu, with the same four options and QuPath's own wording:
-`Cell boundaries only`, `Nuclei only`, `Nuclei & cell boundaries`, `Cell centroids only`.
-Change it in either place and the other follows.
+**This is QuPath's setting, not the panel's.** It lives in QuPath's **`View > Cell display`**
+menu and has four options: `Cell boundaries only`, `Nuclei only`, `Nuclei & cell boundaries`,
+`Cell centroids only`. The panel carries one line of text pointing at it --
+`Cell visibility is also affected by Cell display settings -- see QuPath's View menu.` -- and
+nothing more.
+
+The panel used to carry a second copy of that combo, and it was dropped in 0.2.0: it was the
+one control in the panel with nothing to do with classes, and the panel it sat in was too
+busy. The pointer stays because "I cannot see my cells" is answered by `Cell centroids only`
+at least as often as by a class rule, and a user who does not know the setting exists has no
+way to go looking for it.
 
 Two things to know before you reach for it:
 
@@ -846,8 +892,11 @@ Two things to know before you reach for it:
   are drawn at all. And detections that are not cells -- tiles, spots, anything without a
   nucleus and a boundary -- look the same whichever option is chosen.
 
-It is here because "I cannot see my cells" is answered by `Cell centroids only` at least as
-often as by a class rule, and having to leave the panel to check that was a gap.
+**A preset still remembers it.** Saving a preset records the cell display mode along with the
+rules and the visibility rule, and applying that preset puts it back -- see
+[What a preset carries](#what-a-preset-carries). So does the snapshot taken automatically when
+the panel opens, which is why closing the panel restores it. Neither of those changed when the
+combo was removed.
 
 </details>
 
@@ -864,8 +913,8 @@ or not you use the panel, because you can reach it with stock QuPath alone.
 
 **If your objects vanished the moment you pressed the toolbar button, that is the panel's
 starting state and not a fault.** It opens on `Show only checked classes` with nothing
-checked, so that you can check your way to the populations you want. Click `Check all listed`
--- the button haloed in blue -- to bring everything back, or read
+checked, so that you can check your way to the populations you want. Click the check box at
+the top of the classes list -- the one haloed in blue -- to bring everything back, or read
 [Opening the panel hides everything](#opening-the-panel-hides-everything).
 
 The rest of this section is about the other case: a blank viewer you did not ask for.
@@ -1164,14 +1213,15 @@ on screen: deleting the preset you are looking at does not put the view back.
 |---|---|
 | the class rules in force -- the authoritative half | the `Find` text |
 | the show/hide mode, and `Exact matches only` | the sort order, column widths and divider position |
-| the `Cell display` mode and overlay opacity | which image or project you were in |
+| the `Cell display` mode and overlay opacity -- still carried, though the panel no longer has a control for the first | which image or project you were in |
 | the show and fill toggles for detections, annotations, the TMA grid, connections, TMA core labels, the grid and pixel classification | an object predicate set by a script |
 | the panel's own checked rows and the `Any` / `All` choice | |
 
 Classes are stored **by name**, so a preset saved in one project applies in another that names
 its classes the same way -- which is most of the value in having them. A class the new image
-does not carry is still a rule: it appears in `Active rules` as `Not in this image`, exactly as
-it would if you had checked it by hand.
+does not carry is still a rule: it appears in `Active rules` as `Matches nothing listed above`,
+exactly as it would if you had checked it by hand -- unless it still reaches classes the new
+image does carry, which on multiplexed data it usually does.
 
 ### Where they live, and who else sees them
 
@@ -1216,7 +1266,7 @@ restore something it never captured. The snapshot puts that back too.
 **Double-click its row.** That leaves exactly that one rule in force and switches the mode to
 `Show only checked classes` if you are not already in it, so that row's checkbox becomes the
 only checked one in the list and **its name renders in bold**. If you have scrolled away from
-it, the status strip names what is soloed.
+it, the sentence inside `Active rules` names what is soloed.
 
 Three gestures do the same thing, and they work on class rows and component rows alike:
 
@@ -1231,10 +1281,10 @@ names -- `FoxP3 (Opal 570): 1+: PDL1 negative` -- were already being cut off to 
 it, and it lost most of its point once checking a row came to mean "show this".)
 
 On a class row this shows the class **and everything containing all of its parts** -- see
-[What a checked class row acts on](#what-a-checked-class-row-acts-on) -- and the status strip
+[What a checked class row acts on](#what-a-checked-class-row-acts-on) -- and `Active rules`
 says which case you are in rather than making you work it out:
 
-| The strip says | You soloed |
+| `Active rules` says | You soloed |
 |---|---|
 | `[i] Showing only CD3: CD8 and any class containing all of its parts. Everything else is hidden.` | a class row that has supersets in this image, so `CD3: CD8: PD1` is on screen too |
 | `[i] Showing only classes containing CD8. Everything else is hidden.` | a component row |
@@ -1278,9 +1328,14 @@ of "where did everything go".
 
 ### Act on a filtered set of classes
 
-Filter with `Find`, then use **`Check all listed`** or **`Uncheck all listed`**. Both act on
-the rows currently listed -- classes hidden by the filter are not touched, which is why
-"listed" is in the label.
+Filter with `Find`, then click **the check box in the header of the classes list's checkbox
+column**. It acts on the rows currently listed -- classes the filter is hiding are not touched.
+
+It is three-state: ticked when everything listed is checked, clear when nothing is, and dashed
+when some are. Clicking it cycles between checked and unchecked only; the dashed state is
+something it reports, never something you have to click through. With nothing listed it is
+disabled, so a click on an empty list cannot look ignored. `Undo` names the step either way --
+`Undo "Check all listed"`.
 
 If you find yourself checking all 28 classes, flip the mode instead. It says the same thing
 in one click.
@@ -1298,13 +1353,21 @@ Expand **`Active rules`**. It has one row per rule, with columns `Rule`, `Source
 
 | `Status` | Means |
 |---|---|
-| `Listed above` | it has a row in one of the lists |
-| `Not in this image` | the class is not carried by anything in the current image |
-| `Composite -- not in QuPath's class list` | an `All` combination, which is expected |
+| `Listed above` | it has a row of its own in one of the lists |
+| `Matches classes listed above` | it has no row of its own, but it reaches objects that do. Normal on multiplexed data, where a rule for `CD8` reaches every `CD8: ...` class without being one; and normal for every `All` combination, which is never a class name |
+| `Matches nothing listed above` | it is in force and reaches nothing here -- most often a rule for a class this image does not carry |
 | `Limited by "Exact matches only"` | the QuPath setting is on and this rule cannot match |
+
+The middle two are what a rule **reaches**, not whether its name appears in the classes list.
+Through 0.1.2 they were the latter, which on combinatorial class names called a great many
+working rules inert -- see the [0.2.0 entry in the changelog](../CHANGELOG.md#020).
 
 Each row has a **`Remove`** button that takes out that one rule, and there is a
 **`Clear all rules`** button that removes every rule while leaving the show/hide mode alone.
+**Under `Show only checked classes` that empties the viewer**, which is the panel's opening
+state and not a fault -- no rules plus "show only" means nothing is shown. The warning and the
+haloed check box come back to say so. If what you wanted was everything visible, `Reset all`
+is the one to press: it clears the rules *and* puts the mode back.
 
 **You can take the list with you.** Right-click the rules table and choose
 **`Copy rules to the clipboard`**, or press `Ctrl+C` with the table focused. You get one
@@ -1321,11 +1384,20 @@ back if you did not mean it.
 
 ### Work on a very large image without the panel slowing you down
 
-Turn off **`Auto-refresh counts`**. Counting classes is a full walk of the object hierarchy,
-and on a slide with millions of objects, during a classifier run, that is the one thing in
-this panel you might feel. With it off, the counts freeze, the column header reads
-`Count (stale)` so you know they are, and a **`Refresh`** button recounts on demand. Hiding
-and showing are unaffected -- only the counting is.
+There is nothing to turn off, and that is deliberate. Counting classes is a full walk of the
+object hierarchy, and on a slide with millions of objects it is the one thing in this panel
+you might feel -- so it is done off the main thread, after a short pause once you stop
+changing things, and a recount that has been overtaken by a newer one is dropped rather than
+drawn. A spinner appears if a count runs long enough to be worth mentioning, and while one is
+in flight the count column header reads **`Count (stale)`** -- if you have that column on, which
+by default you do not.
+
+**Hiding and showing are never waiting on a count.** Check a row and the viewer redraws
+immediately; only the numbers beside the rows are catching up.
+
+0.1.2 had an `Auto-refresh counts` checkbox for this, and it is gone. Turning it off bought a
+little responsiveness at the price of numbers that were silently the previous run's, which is
+the failure the `Count (stale)` marker exists to catch in the first place.
 
 **With it left on, a recount after a classifier run announces itself.** The lists dim, a
 spinner appears and the status strip reads `Counting classes in <image>...` -- after a short
@@ -1383,9 +1455,14 @@ across images.
 you are looking at, and the `Image:` label that says which image that is.
 
 **A class checked in one image but absent from the next** stays checked and stays in force --
-it simply has no row to show it in, because nothing in this image carries that class. It
-appears in `Active rules` with the status `Not in this image`, and the status strip appends
-`1 rule has no class in this image.`
+it simply has no row to show it in, because nothing in this image carries that class.
+
+Whether the panel calls that out depends on what the rule still *reaches*. If nothing in the
+new image matches it, `Active rules` shows `Matches nothing listed above` and the status
+sentence inside that expander appends `1 rule matches nothing listed above.` But on a
+multiplexed panel a rule for `CD8` usually still reaches plenty -- every `CD8: ...` class the
+new image does carry -- and then it reads `Matches classes listed above` and nothing is
+counted, because nothing is wrong.
 
 This is why the panel counts **rules** rather than checked rows: the two numbers can
 legitimately differ, and a rule you cannot see is still a rule. A row-counting indicator
@@ -1397,11 +1474,11 @@ If you would rather the rows stayed put as you flip between images, turn on
 
 **Presets follow the project, not the image.** The same list is offered on every image in the
 project, and applying one on a different image applies the same rules -- which is the point,
-on a project where every slide carries the same panel of markers. Classes the new image does
-not carry appear in `Active rules` as `Not in this image`.
+on a project where every slide carries the same panel of markers. Rules the new image has
+nothing for appear in `Active rules` as `Matches nothing listed above`.
 
 **With no image open** the lists show `No image open. Open an image to list the classes it
-uses.`, and any rules you have set stay in force -- the status strip says
+uses.`, and any rules you have set stay in force -- `Active rules` says
 `[i] 2 rules active -- they apply to every image.`
 
 </details>
@@ -1550,13 +1627,12 @@ difference decides what comes back after a restart.
 |---|---|---|---|
 | `Hide checked classes` / `Show only checked classes` | QuPath | **yes** | global, but the panel sets it to `Show only checked classes` every time it opens |
 | `Exact matches only` | QuPath | **yes** | global |
-| `Cell display` | QuPath | **yes** | global |
+| `Cell display` | QuPath | **yes** | global -- set it in QuPath's `View` menu; the panel only points at it |
 | Which classes are checked (your rules) | QuPath | **no** -- cleared when the panel opens, and put back when it closes | global for the session |
 | Saved presets | the panel | **yes**, in the project | one set per project, shared with anyone who opens it |
 | `Any` / `All` | the panel | yes | the panel |
 | `Highlight the Any / All choice when it first applies` | the panel | yes | one machine, every project |
 | `List` scope | the panel | yes | the panel |
-| `Auto-refresh counts` | the panel | yes | the panel |
 | Divider position between the two lists | the panel | yes | separately for the wide and narrow layouts |
 | `Active rules` expanded or collapsed | the panel | yes | the panel |
 | `Include classes with no objects here` | the panel | yes | the panel |
@@ -1577,10 +1653,10 @@ on is a saved preference, in that table. Whether it has already fired is not: th
 as long as QuPath runs and no longer, so the next launch shows it once more.
 
 There is one more, with no control anywhere in the panel: the **80% threshold** at which a
-component's spread ratio is shown in bold is a saved preference
-(`classvisibility.coverageThreshold`). Nothing in the interface changes it. If two machines
-ever show you different rows in bold, that setting having been retuned on one of them is the
-reason.
+component's spread ratio is shown in bold, when the `Spread` column is on, is a saved
+preference (`classvisibility.coverageThreshold`). Nothing in the interface changes it. If two
+machines ever show you different rows in bold, that setting having been retuned on one of them
+is the reason.
 
 Two of these are deliberate omissions rather than oversights:
 
@@ -1607,7 +1683,8 @@ warning strip and a `Turn off` button. See
 
 **Everything vanished when I opened the panel.**
 That is how it opens: `Show only checked classes` with nothing checked, so that you check your
-way to what you want to see. Click `Check all listed` -- the button haloed in blue -- to put
+way to what you want to see. Click the check box at the top of the classes list -- the one
+haloed in blue -- to put
 every listed class on screen, or close the panel, which puts back the view you had before you
 opened it. See [Opening the panel hides everything](#opening-the-panel-hides-everything).
 
@@ -1670,8 +1747,11 @@ changes it.
 
 **The counts do not match my measurement table.**
 Check the `List` scope. `Detections` is the default, and a measurement table showing cells,
-annotations or every object will not agree with it. Also check whether
-`Auto-refresh counts` is off -- the column header reads `Count (stale)` when it is.
+annotations or every object will not agree with it. `Count` is also off by default in the
+classes list -- the column on screen is `Affects`, which is a different number, and the two
+are explained in [`Count` and `Affects`](#count-and-affects). If the column header reads
+`Count (stale)`, a recount is on its way and the numbers you are reading are the previous
+run's.
 
 **The toolbar button is missing.**
 Toolbar insertion is best-effort, and nothing depends on it. **Extensions > Class Visibility**
@@ -1679,7 +1759,7 @@ carries every item the button's menu does -- `Show panel`, `Restore the state fr
 panel opened`, `Reset all visibility` and `Help` -- so the recovery routes are still
 there. What you lose is the at-a-glance signal: the button's slashed eye and its tooltip are
 the quickest way to see whether any class rule is in force, and with no button you have to open
-the panel and read the status strip instead. If the button is missing on your platform, that is worth
+the panel and read the `Active rules` count instead. If the button is missing on your platform, that is worth
 an issue -- it is not expected.
 
 **I cannot find the panel at all.**
@@ -1720,8 +1800,9 @@ names the way out: `File > Project > Create project`. See
 **My cells are drawn as dots.**
 `Cell display` is on `Cell centroids only`. That is QuPath's own setting, shared with
 `View > Cell display`, and it is remembered across a restart -- so it can be left over from a
-session weeks ago. Change it in the panel header or in the View menu; both write the same
-value. See [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn).
+session weeks ago. Change it in QuPath's `View` menu -- this panel points at that setting but
+does not carry a copy of it. See
+[`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn).
 
 **Something else.**
 File an issue on the repository's issue tracker, saying which platform you are on and which

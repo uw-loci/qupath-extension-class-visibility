@@ -117,9 +117,6 @@ public final class ClassVisibilityController {
     /** Update gating: false when the tab is docked and either unselected or in a collapsed pane. */
     private final BooleanProperty paneVisible = new SimpleBooleanProperty(true);
 
-    /** Whether counts re-harvest automatically. Bound to the preference by the pane. */
-    private final BooleanProperty autoRefresh = new SimpleBooleanProperty(true);
-
     private ClassHarvester.Scope scope = ClassHarvester.Scope.DETECTIONS;
 
     private PathObjectHierarchy listeningTo;
@@ -181,11 +178,6 @@ public final class ClassVisibilityController {
      */
     public BooleanProperty paneVisibleProperty() {
         return paneVisible;
-    }
-
-    /** @return whether counts re-harvest automatically when objects change. */
-    public BooleanProperty autoRefreshProperty() {
-        return autoRefresh;
     }
 
     /** Attach every listener and take the first census. Idempotent. */
@@ -261,11 +253,14 @@ public final class ClassVisibilityController {
         scheduleHarvest(immediate ? 0 : DEBOUNCE_MILLIS, false);
     }
 
+    /**
+     * Counts always follow the objects. There was an <i>Auto-refresh counts</i> checkbox in front
+     * of this until 0.2.0, defaulting to on, whose off position bought responsiveness on a very
+     * large image at the price of numbers that were silently the previous run's -- the failure the
+     * stale-count marker exists to catch. The debounce and the off-thread harvest are what make
+     * this affordable, and neither is a setting anybody should have to find.
+     */
     private void markDirty() {
-        if (!autoRefresh.get()) {
-            dirty = true;
-            return;
-        }
         requestHarvest(false);
     }
 

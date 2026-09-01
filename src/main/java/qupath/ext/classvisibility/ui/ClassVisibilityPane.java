@@ -1,12 +1,14 @@
 package qupath.ext.classvisibility.ui;
 
 import javafx.animation.KeyFrame;
+import javafx.application.Platform;
 import javafx.animation.KeyValue;
 import javafx.animation.Timeline;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyStringProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -23,6 +25,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.Skin;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
@@ -41,7 +44,6 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -53,7 +55,6 @@ import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 import javafx.util.Duration;
-import javafx.util.StringConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.classvisibility.core.ClassCensus;
@@ -121,20 +122,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** Column id of the count column in both tables, so its header can be found after a reorder. */
     private static final String COUNT_COLUMN_ID = "countColumn";
 
-    /** Below this width the component spread column is dropped; recoverable from the column menu. */
-    private static final double DROP_SPREAD_COLUMN_WIDTH = 360;
-
-    /**
-     * Below this CLASS TABLE width the Affects column is dropped; recoverable from the column
-     * menu. Driven off the table rather than the pane, because in the wide profile the table is
-     * one half of a split pane and the pane's own width says nothing about how much room the
-     * class names have left.
-     */
-    private static final double DROP_AFFECTS_COLUMN_WIDTH = 340;
-
-    /** Column id of the Affects column, so its visibility can be driven after a reorder. */
-    private static final String AFFECTS_COLUMN_ID = "affectsColumn";
-
     /** Coverage emphasis is suppressed entirely below this many classes. */
     private static final int COVERAGE_EMPHASIS_MIN_CLASSES = 5;
 
@@ -142,13 +129,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private static final double GRAPHIC_GAP = 4;
 
     /**
-     * The halo colour for <i>Check all listed</i> while every object is hidden.
+     * The halo colour for the class table's header check control while every object is hidden.
      *
      * <p>Mid-blue at full saturation, chosen to sit clear of both QuPath themes: it is lighter
      * than the dark theme's controls and darker than the light theme's background, so the glow
      * reads on either without being tuned per theme. It is never the only signal -- the status
-     * strip states the condition in words, the button's tooltip and accessible text say it too,
-     * and the halo is on a control that is already labelled.</p>
+     * strip states the condition in words, the control's tooltip and accessible text say it too,
+     * and the rules table's placeholder says it a third time.</p>
      */
     private static final Color EVERYTHING_HIDDEN_HALO_COLOR = Color.web("#3D8BFD");
 
@@ -212,14 +199,14 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private VBox combinationBox;
     private final RadioButton allRadio = new RadioButton();
     private final CheckBox exactCheck = new CheckBox(Strings.get("check.exact"));
-    private final CheckBox autoRefreshCheck = new CheckBox(Strings.get("check.autoRefresh"));
     private final CheckBox includeEmptyCheck = new CheckBox(Strings.get("check.includeEmpty"));
     private final ComboBox<ClassHarvester.Scope> scopeCombo = new ComboBox<>();
     /**
-     * How QuPath draws cells. The one control in this panel that has nothing to do with classes:
-     * it is QuPath's own {@code View -> Cell display}, put where the user is already looking.
+     * The class table's header check control: one tri-state box that checks or unchecks every
+     * class the list is currently showing. It replaced two full-width buttons below the table
+     * (external tester, 2026-09-01) and it respects the {@code Find} filter exactly as they did.
      */
-    private final ComboBox<OverlayOptions.DetectionDisplayMode> cellDisplayCombo = new ComboBox<>();
+    private final CheckBox headerCheckAll = new CheckBox();
 
     /** Named visibility presets stored in the project, and the two controls that manage them. */
     private final ComboBox<String> presetCombo = new ComboBox<>();
@@ -227,20 +214,28 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final Button presetDeleteButton = new Button(Strings.get("button.presetDelete"));
     private final TextField findField = new TextField();
     private final Button clearFindButton = new Button(Strings.get("button.findClear"));
-    private final Button refreshButton = new Button(Strings.get("button.refresh"));
     private final Button helpButton = new Button(Strings.get("button.help"));
 
     private final Button undoButton = new Button(Strings.get("button.undo"));
     private final Button resetButton = new Button(Strings.get("button.reset"));
     private final Button switchToHideButton = new Button(Strings.get("button.switchToHide"));
     private final Button clearRulesButton = new Button(Strings.get("button.clearAllRules"));
-    private final Button checkAllButton = new Button(Strings.get("button.checkAllListed"));
     /** Dock / undock. Its label and action are supplied by whichever surface currently holds the pane. */
     private final Button surfaceButton = new Button();
-    private final Button uncheckAllButton = new Button(Strings.get("button.uncheckAllListed"));
 
     private final Label modeLabel = new Label(Strings.get("label.mode"));
-    private final Label cellDisplayLabel = new Label(Strings.get("label.cellDisplay"));
+    /**
+     * A pointer, not a control. The {@code Cell display} combo that used to sit here was the one
+     * thing in the panel with nothing to do with classes, and it duplicated QuPath's own
+     * {@code View -> Cell display}; this line is what remains of it, so a user whose cells look
+     * wrong still knows where to go.
+     */
+    private final Label cellDisplayNote = new Label(Strings.get("note.cellDisplay"));
+    /**
+     * The standing "what is in force" sentence, inside the <i>Active rules</i> expander. Only the
+     * everything-hidden warning stays on the always-visible strip; see {@link #updateStatus()}.
+     */
+    private final Label rulesStatusLabel = new Label();
     private final Label presetLabel = new Label(Strings.get("label.presets"));
     private final Label scopeLabel = new Label(Strings.get("label.scope"));
     private final Label findLabel = new Label(Strings.get("label.find"));
@@ -252,23 +247,12 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final HBox findRow = new HBox(4);
     private final HBox exactWarningBox = new HBox(6);
     private final HBox statusButtons = new HBox(6);
+    /** The always-visible strip. Out of the layout entirely when it has nothing to say. */
+    private final VBox statusBox = new VBox(4);
     private final VBox modeBox = new VBox(2);
-    private final VBox cellDisplayBox = new VBox(2);
     private final HBox modeRow = new HBox(12);
-    /**
-     * Holds the visibility-rule group and the cell-display group side by side.
-     *
-     * <p>A {@link FlowPane} rather than an {@code HBox} because the request was to use the empty
-     * space beside the radios, and how much space that is depends on the surface: a docked tab is
-     * narrow, an undocked window is whatever the user dragged it to. FlowPane puts the two groups
-     * side by side when they fit and wraps the second onto its own line when they do not, which
-     * is the behaviour without a width threshold of our own to get wrong.</p>
-     */
-    private final FlowPane modeAndDisplayRow = new FlowPane(16, 4);
     private final VBox filterBox = new VBox(4);
     private final HBox filterRow = new HBox(8);
-    private final VBox classButtons = new VBox(4);
-    private final HBox classButtonRow = new HBox(6);
     private final SplitPane splitPane = new SplitPane();
     private final VBox classPane = new VBox(4);
     private final VBox componentPane = new VBox(4);
@@ -303,8 +287,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private VisibilitySnapshot openingSnapshot;
 
     /**
-     * The halo drawn on <i>Check all listed</i> while every object is hidden. One instance, one
-     * button: a JavaFX {@code Effect} is attached to a node, so it is not shared.
+     * The halo drawn on the class table's header check control while every object is hidden. One
+     * instance, one control: a JavaFX {@code Effect} is attached to a node, so it is not shared.
      */
     private final DropShadow everythingHiddenHalo = new DropShadow(BlurType.GAUSSIAN,
             EVERYTHING_HIDDEN_HALO_COLOR, 10, 0.6, 0, 0);
@@ -356,8 +340,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         wireKeyboard();
 
         controller.setScope(ClassVisibilityPreferences.scopeProperty().get());
-        controller.autoRefreshProperty().bindBidirectional(
-                ClassVisibilityPreferences.autoRefreshCountsProperty());
         controller.install();
         // A dock, an undock, or a collapsed analysis pane takes the panel off screen mid-pulse.
         // Both re-parenting moves hide the surface the Pane is in, which is what this sees.
@@ -385,8 +367,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * ({@link #restoreOpeningState()}); the same snapshot also backs <i>Restore the state from
      * when the panel opened</i> while the panel is still up. The status strip says
      * <b>[!] Every object is hidden</b> in words the moment it happens, with <i>Switch to "Hide
-     * checked classes"</i> and <i>Reset all</i> beside it, and <i>Check all listed</i> is haloed
-     * as the way back. And the close guard still runs after the restore, for the case where the
+     * checked classes"</i> and <i>Reset all</i> beside it, the rules table's placeholder says it
+     * again, and the class table's header check control is haloed as the way back. And the close guard still runs after the restore, for the case where the
      * state being put back is itself the everything-hidden pair (finding R2).</p>
      */
     private void applyOpeningState() {
@@ -476,12 +458,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * pane -- its tables, its rows, its census -- reachable forever. The panel is now opened and
      * closed routinely rather than once (it hides everything on open, so closing it is a normal
      * move), and each cycle builds a new pane, so a retained one is a leak per cycle rather than
-     * a curiosity. The two mode listeners were retained this way before the combo existed.</p>
+     * a curiosity.</p>
      */
     public void dispose() {
         stopCombinationHintPulse();
         controller.uninstall();
-        cellDisplayCombo.valueProperty().unbindBidirectional(options.detectionDisplayModeProperty());
         if (modeListener != null) {
             options.selectedClassVisibilityModeProperty().removeListener(modeListener);
             modeListener = null;
@@ -700,22 +681,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         scopeCombo.getItems().setAll(ClassHarvester.Scope.values());
         scopeCombo.setTooltip(new Tooltip(Strings.get("tooltip.scope")));
 
-        cellDisplayCombo.getItems().setAll(OverlayOptions.DetectionDisplayMode.values());
-        cellDisplayCombo.setConverter(new StringConverter<>() {
-            @Override
-            public String toString(OverlayOptions.DetectionDisplayMode mode) {
-                return mode == null ? "" : cellDisplayLabelFor(mode);
-            }
-
-            @Override
-            public OverlayOptions.DetectionDisplayMode fromString(String text) {
-                // Not editable, so this is never called; returning null beats inventing a parse.
-                return null;
-            }
-        });
-        cellDisplayCombo.setTooltip(new Tooltip(Strings.get("tooltip.cellDisplay")));
-        cellDisplayCombo.setAccessibleText(Strings.get("label.cellDisplay"));
-        cellDisplayLabel.setLabelFor(cellDisplayCombo);
+        cellDisplayNote.setWrapText(true);
         findField.setPromptText(Strings.get("prompt.find"));
         findField.setTooltip(new Tooltip(Strings.get("tooltip.find")));
         HBox.setHgrow(findField, Priority.ALWAYS);
@@ -728,31 +694,23 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             findField.clear();
             findField.requestFocus();
         });
-        autoRefreshCheck.setTooltip(new Tooltip(Strings.get("tooltip.autoRefresh")));
-        refreshButton.setTooltip(new Tooltip(Strings.get("tooltip.refresh")));
-        refreshButton.setOnAction(e -> controller.requestHarvest(true));
-        refreshButton.visibleProperty().bind(autoRefreshCheck.selectedProperty().not());
-        refreshButton.managedProperty().bind(autoRefreshCheck.selectedProperty().not());
-
         findRow.setAlignment(Pos.CENTER_LEFT);
         scopeRow.setAlignment(Pos.CENTER_LEFT);
         filterRow.setAlignment(Pos.CENTER_LEFT);
 
-        // Every control in a horizontally shrinkable row whose label IS the control. Three groups
-        // are deliberately absent. The wrapping ones -- exactWarningLabel, includeEmptyCheck, the
-        // Any / All radios -- because a USE_PREF_SIZE minimum asks for the whole text on one line,
-        // which is the opposite of wrapping. The absorbers -- imageLabel (centre ellipsis plus a
-        // tooltip, by design), the two combos, the find field -- because giving up width is their
-        // job. And the mode and cell-display controls, for a different reason again: they sit in
-        // a FlowPane, which lays children out at their preferred size and wraps rather than
-        // shrinking them, so a minimum there would change nothing at all.
+        // Every control in a horizontally shrinkable row whose label IS the control. Two groups
+        // are deliberately absent. The wrapping ones -- exactWarningLabel, includeEmptyCheck,
+        // cellDisplayNote, the Any / All radios -- because a USE_PREF_SIZE minimum asks for the
+        // whole text on one line, which is the opposite of wrapping. And the absorbers --
+        // imageLabel (centre ellipsis plus a tooltip, by design), the scope combo, the find field
+        // -- because giving up width is their job.
         keepFullyReadable(helpButton, surfaceButton,
                 presetLabel, presetSaveButton, presetDeleteButton,
                 turnOffExact,
-                scopeLabel, findLabel, clearFindButton, autoRefreshCheck, refreshButton,
-                checkAllButton, uncheckAllButton);
+                scopeLabel, findLabel, clearFindButton);
 
-        VBox header = new VBox(4, imageRow, presetRow, modeAndDisplayRow, exactWarningBox, filterBox);
+        VBox header = new VBox(4, imageRow, presetRow, modeBox, cellDisplayNote, exactWarningBox,
+                filterBox);
         header.setPadding(new Insets(0, 0, 6, 0));
         setTop(header);
 
@@ -774,7 +732,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         HBox statusRow = new HBox(6, spinner, statusLabel);
         statusRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(statusLabel, Priority.ALWAYS);
-        VBox statusBox = new VBox(4, statusRow, statusButtons);
+        statusBox.getChildren().setAll(statusRow, statusButtons);
         statusBox.setPadding(new Insets(6, 0, 0, 0));
 
         VBox bottom = new VBox(4, rulesPane, statusBox);
@@ -793,15 +751,28 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         checkColumn.setReorderable(false);
         checkColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         checkColumn.setCellFactory(col -> new ClassCheckCell());
+        // The two full-width buttons this replaces sat under the table and said what they did in
+        // words. A bare box in a header says nothing at all, so the tooltip and the accessible
+        // text carry the whole meaning -- and updateCheckAllState keeps both current.
+        // setSelected does not fire an ActionEvent, so the state sync below cannot re-enter here.
+        headerCheckAll.setOnAction(e -> {
+            List<PathClass> listed = filteredClasses.stream().map(ClassRow::pathClass).toList();
+            if (headerCheckAll.isSelected()) {
+                pushUndo(Strings.get("action.checkAllListed"));
+                model.checkClasses(listed);
+            } else {
+                pushUndo(Strings.get("action.uncheckAllListed"));
+                model.uncheckClasses(listed);
+            }
+        });
+        checkColumn.setGraphic(headerCheckAll);
+        keepColumnVisible(checkColumn);
 
-        TableColumn<ClassRow, ClassRow> nameColumn = new TableColumn<>(Strings.get("column.class"));
+        TableColumn<ClassRow, ClassRow> nameColumn = new TableColumn<>();
         nameColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         nameColumn.setCellFactory(col -> new ClassNameCell());
         nameColumn.setComparator(Comparator.comparing(ClassRow::displayName, String.CASE_INSENSITIVE_ORDER));
-        Label nameHeader = new Label(Strings.get("column.class"));
-        nameHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.class")));
-        nameColumn.setGraphic(nameHeader);
-        nameColumn.setText("");
+        nameAndExplain(nameColumn, Strings.get("column.class"), Strings.get("tooltip.column.class"));
 
         TableColumn<ClassRow, ClassRow> countColumn = new TableColumn<>();
         countColumn.setPrefWidth(84);
@@ -810,9 +781,12 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countColumn.setCellFactory(col -> new CountCell<>(ClassRow::count));
         countColumn.setComparator(Comparator.comparingLong(ClassRow::count));
         countColumn.setId(COUNT_COLUMN_ID);
-        Label countHeader = new Label(Strings.get("column.count"));
-        countHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.count")));
-        countColumn.setGraphic(countHeader);
+        nameAndExplain(countColumn, Strings.get("column.count"), Strings.get("tooltip.column.count"));
+        // Off by default. Affects is the number that answers "what will this click do", so with
+        // both columns on screen the class table showed two numbers where one of them is a trap
+        // (external tester, 2026-09-01: "too many columns"). Count stays one click away in the
+        // table's own menu button, and the Affects tooltip names it as the comparison.
+        countColumn.setVisible(false);
 
         // The truth about the click. The Count column answers "how many objects carry this exact
         // class"; with "Exact matches only" off -- the shipped default -- a click on the row acts
@@ -826,8 +800,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         affectsColumn.setCellFactory(col -> new AffectsCell());
         affectsColumn.setComparator(Comparator.comparingLong(
                 (ClassRow row) -> affectedObjects(row.pathClass())));
-        affectsColumn.setId(AFFECTS_COLUMN_ID);
-        affectsColumn.setGraphic(headerLabel(Strings.get("column.affects"), Strings.get("tooltip.column.affects")));
+        nameAndExplain(affectsColumn, Strings.get("column.affects"), Strings.get("tooltip.column.affects"));
 
         // No "Only" column. It cost 52px of a column in which "FoxP3 (Opal 570): 1+: ..." was
         // already being cut off, to save one click -- and once checking a row means "show this"
@@ -836,13 +809,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         classTable.getColumns().setAll(List.of(checkColumn, nameColumn, countColumn,
                 affectsColumn));
         installSoloGestures(classTable, ClassRow::displayName, this::soloClass);
-        // Dropped when the class names would otherwise have nothing left, and recoverable from
-        // the table's own column menu.
-        classTable.widthProperty().addListener((obs, oldValue, newValue) ->
-                setColumnVisible(classTable, AFFECTS_COLUMN_ID,
-                        newValue.doubleValue() >= DROP_AFFECTS_COLUMN_WIDTH));
+        // Affects is no longer dropped at narrow widths. It was, back when the class table
+        // carried four columns and the names had nothing left; with Count hidden by default the
+        // pressure is halved, and this is the number the whole S1 correction rests on -- hiding
+        // it to save 84px would take away the one thing on the row that says what the click does.
         classTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         classTable.setTableMenuButtonVisible(true);
+        installHeaderTooltips(classTable);
         classTable.setMinHeight(120);
         VBox.setVgrow(classTable, Priority.ALWAYS);
 
@@ -860,24 +833,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             return true;
         });
         // Default sort: with 28 classes the ones worth acting on are the populous ones, and an
-        // alphabetical sort buries a long derived name among its near-identical siblings.
-        countColumn.setSortType(TableColumn.SortType.DESCENDING);
-        classTable.getSortOrder().add(countColumn);
+        // alphabetical sort buries a long derived name among its near-identical siblings. On
+        // Affects rather than Count since 0.2.0, because Count is now hidden by default and a
+        // table sorted by a column nobody can see is a table sorted for no stated reason.
+        affectsColumn.setSortType(TableColumn.SortType.DESCENDING);
+        classTable.getSortOrder().add(affectsColumn);
 
-        // checkAllButton's tooltip is set by updateBulkButtonState, which swaps it for the
-        // everything-hidden wording; setting it here as well would leave two sources for one
-        // string and a stale first paint.
-        uncheckAllButton.setTooltip(new Tooltip(Strings.get("tooltip.button.uncheckAllListed")));
         // A sentence rather than a control name, and the longest string in the panel. It wraps
         // instead of being pinned to its preferred width -- pinning it would make the whole class
         // pane refuse to be narrower than that one line, and wrapping is what the Any / All radios
         // already do with their long labels.
         includeEmptyCheck.setWrapText(true);
         includeEmptyCheck.setTooltip(new Tooltip(Strings.get("tooltip.check.includeEmpty")));
-        classButtonRow.getChildren().addAll(checkAllButton, uncheckAllButton);
-        classButtons.getChildren().addAll(classButtonRow, includeEmptyCheck);
 
-        classPane.getChildren().addAll(classHeader, classTable, classButtons);
+        classPane.getChildren().addAll(classHeader, classTable, includeEmptyCheck);
     }
 
     private void buildComponentTable() {
@@ -889,14 +858,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         checkColumn.setReorderable(false);
         checkColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         checkColumn.setCellFactory(col -> new ComponentCheckCell());
+        keepColumnVisible(checkColumn);
 
         TableColumn<ComponentRow, ComponentRow> nameColumn = new TableColumn<>();
         nameColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         nameColumn.setCellFactory(col -> new ComponentNameCell());
         nameColumn.setComparator(Comparator.comparing(ComponentRow::name, String.CASE_INSENSITIVE_ORDER));
-        Label nameHeader = new Label(Strings.get("column.component"));
-        nameHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.component")));
-        nameColumn.setGraphic(nameHeader);
+        nameAndExplain(nameColumn, Strings.get("column.component"), Strings.get("tooltip.column.component"));
 
         TableColumn<ComponentRow, ComponentRow> spreadColumn = new TableColumn<>();
         spreadColumn.setPrefWidth(60);
@@ -904,10 +872,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         spreadColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         spreadColumn.setCellFactory(col -> new SpreadCell());
         spreadColumn.setComparator(Comparator.comparingDouble(ComponentRow::coverage));
-        Label spreadHeader = new Label(Strings.get("column.spread"));
-        spreadHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.spread")));
-        spreadColumn.setGraphic(spreadHeader);
+        nameAndExplain(spreadColumn, Strings.get("column.spread"), Strings.get("tooltip.column.spread"));
         spreadColumn.setId("spreadColumn");
+        // Off by default, and no longer width-driven. Spread is a diagnostic about a component's
+        // discriminating power, not the answer to "what will this click do" -- and the SpreadCell
+        // tooltip plus the swamping note in the status strip already carry that warning at the
+        // point of the click. Recoverable from the table's menu button.
+        spreadColumn.setVisible(false);
 
         TableColumn<ComponentRow, ComponentRow> countColumn = new TableColumn<>();
         countColumn.setPrefWidth(84);
@@ -916,14 +887,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countColumn.setCellFactory(col -> new CountCell<>(ComponentRow::count));
         countColumn.setComparator(Comparator.comparingLong(ComponentRow::count));
         countColumn.setId(COUNT_COLUMN_ID);
-        Label countHeader = new Label(Strings.get("column.count"));
-        countHeader.setTooltip(new Tooltip(Strings.get("tooltip.column.count")));
-        countColumn.setGraphic(countHeader);
+        nameAndExplain(countColumn, Strings.get("column.count"), Strings.get("tooltip.column.count"));
 
         componentTable.getColumns().setAll(List.of(checkColumn, nameColumn, spreadColumn, countColumn));
         installSoloGestures(componentTable, ComponentRow::name, this::soloComponent);
         componentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         componentTable.setTableMenuButtonVisible(true);
+        installHeaderTooltips(componentTable);
         componentTable.setMinHeight(120);
         VBox.setVgrow(componentTable, Priority.ALWAYS);
 
@@ -982,7 +952,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         ruleTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         ruleTable.setItems(ruleRows);
         ruleTable.setPrefHeight(140);
-        ruleTable.setPlaceholder(new Label(Strings.get("placeholder.rules.empty")));
+        // Set here only so the table is never placeholder-less before the first render;
+        // updateRuleTable owns it from then on, because with "Show only checked classes" on and
+        // nothing checked -- the state the panel OPENS in -- "every object is visible" is the
+        // exact opposite of what the viewer is showing (external tester, 2026-09-01).
+        updateRulesPlaceholder();
         // The rules table is the reproducibility surface: it is the only place that states, for
         // the record, what is hiding things -- including rules for classes absent from this image.
         // Rules are deliberately not persisted, so without this the only way out was retyping it
@@ -1002,7 +976,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         HBox rulesTop = new HBox(6, clearRulesButton);
         rulesTop.setAlignment(Pos.CENTER_RIGHT);
         rulesTop.setPadding(new Insets(0, 0, 4, 0));
-        VBox rulesContent = new VBox(4, rulesTop, ruleTable);
+        // The routine "N rules active" sentence lives here rather than on the always-visible
+        // strip (external tester, 2026-09-01: "put inside drop down"). The everything-hidden
+        // warning does NOT -- see updateStatus.
+        rulesStatusLabel.setWrapText(true);
+        VBox rulesContent = new VBox(4, rulesStatusLabel, rulesTop, ruleTable);
 
         rulesPane.setText(Strings.get("rules.none"));
         rulesPane.setContent(rulesContent);
@@ -1026,33 +1004,98 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             wideProfile = true;
             applyProfileLayout();
         }
-        setColumnVisible(componentTable, "spreadColumn", width >= DROP_SPREAD_COLUMN_WIDTH);
-    }
-
-    private static void setColumnVisible(TableView<?> table, String id, boolean visible) {
-        for (TableColumn<?, ?> column : table.getColumns()) {
-            if (id.equals(column.getId())) {
-                column.setVisible(visible);
-                return;
-            }
-        }
     }
 
     /**
-     * A column header that can carry a tooltip. A {@code TableColumn}'s own text cannot, so every
-     * header a user might hover for an explanation has to be a {@code Label} graphic instead.
+     * Keep a column out of the reach of the table's own menu button.
      *
-     * @param text the header text
-     * @param tooltipText the hover explanation
-     * @return the header node
+     * <p>JavaFX offers no way to leave a column out of that menu, and finding N11 recorded that
+     * the checkbox column can be hidden from it -- which since 0.2.0 would also take the
+     * check-all control in its header. Two other columns are now hidden by default and the menu
+     * is the only way back to them, so the menu is load-bearing rather than incidental: it has to
+     * stay usable, and it has to stay unable to remove the one column every row is acted on
+     * through. Re-showing on the next pulse is the only lever available.</p>
+     *
+     * @param column the column that must always be on screen
      */
-    private static Label headerLabel(String text, String tooltipText) {
-        Label label = new Label(text);
-        Tooltip tooltip = new Tooltip(tooltipText);
-        tooltip.setWrapText(true);
-        tooltip.setMaxWidth(340);
-        label.setTooltip(tooltip);
-        return label;
+    private static void keepColumnVisible(TableColumn<?, ?> column) {
+        column.visibleProperty().addListener((obs, wasVisible, isVisible) -> {
+            if (!Boolean.TRUE.equals(isVisible)) {
+                column.setVisible(true);
+            }
+        });
+    }
+
+    /**
+     * Name a column and give its header a hover explanation.
+     *
+     * <p><b>The name has to be the column's own {@code text}, and until 0.2.0 none of them was.</b>
+     * A {@code TableColumn}'s text carries no tooltip, so every header worth explaining was built
+     * as a {@code Label} graphic with the text blanked -- which works in the header and is
+     * invisible to the table's menu button, because {@code TableViewSkinBase} binds each menu
+     * item to {@code column.textProperty()} and nothing else. Every entry in both menus was a
+     * blank row. That was survivable while every column was on screen anyway; it is not now that
+     * Count and Spread are off by default and the menu is the only way back to them.</p>
+     *
+     * <p>So the text goes back on the column, where the menu can read it, and the tooltip goes
+     * onto the header node itself once the skin has built one -- see
+     * {@link #installHeaderTooltips(TableView)}.</p>
+     *
+     * @param column the column to name
+     * @param text the header text, which is also what the table's menu button will show
+     * @param tooltipText the hover explanation, parked on the column until its header exists
+     */
+    private static void nameAndExplain(TableColumn<?, ?> column, String text, String tooltipText) {
+        column.setText(text);
+        column.setUserData(tooltipText);
+    }
+
+    /**
+     * Attach the parked header tooltips, once the table has a skin and therefore column headers.
+     *
+     * <p>{@code TableColumn.getStyleableNode()} is the supported way to reach a header, and it
+     * returns null until the skin exists -- so this waits for one, and waits a pulse longer,
+     * because the headers are built during the skin's own layout. It re-runs when a column is
+     * shown or hidden as well: the header row rebuilds its children then, and a tooltip installed
+     * on a discarded header would be lost silently, which is exactly the sort of quiet
+     * degradation the menu is now load-bearing enough to notice.</p>
+     *
+     * @param table the table whose columns were named by {@link #nameAndExplain}
+     */
+    private static void installHeaderTooltips(TableView<?> table) {
+        for (TableColumn<?, ?> column : table.getColumns()) {
+            column.visibleProperty().addListener(
+                    (obs, was, is) -> Platform.runLater(() -> applyHeaderTooltips(table)));
+        }
+        if (table.getSkin() != null) {
+            Platform.runLater(() -> applyHeaderTooltips(table));
+            return;
+        }
+        table.skinProperty().addListener(new ChangeListener<Skin<?>>() {
+            @Override
+            public void changed(ObservableValue<? extends Skin<?>> obs, Skin<?> was, Skin<?> is) {
+                if (is != null) {
+                    table.skinProperty().removeListener(this);
+                    Platform.runLater(() -> applyHeaderTooltips(table));
+                }
+            }
+        });
+    }
+
+    private static void applyHeaderTooltips(TableView<?> table) {
+        for (TableColumn<?, ?> column : table.getColumns()) {
+            if (!(column.getUserData() instanceof String text)) {
+                continue;
+            }
+            Node header = column.getStyleableNode();
+            if (header == null) {
+                continue;
+            }
+            Tooltip tooltip = new Tooltip(text);
+            tooltip.setWrapText(true);
+            tooltip.setMaxWidth(340);
+            Tooltip.install(header, tooltip);
+        }
     }
 
     /**
@@ -1101,20 +1144,12 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
         modeRow.getChildren().setAll(hideRadio, showOnlyRadio);
         modeBox.getChildren().setAll(modeLabel, modeRow, exactCheck);
-        cellDisplayBox.getChildren().setAll(cellDisplayLabel, cellDisplayCombo);
-        modeAndDisplayRow.getChildren().setAll(modeBox, cellDisplayBox);
-        cellDisplayCombo.setMaxWidth(Region.USE_COMPUTED_SIZE);
 
         scopeRow.getChildren().setAll(scopeLabel, scopeCombo);
         findRow.getChildren().setAll(findLabel, findField, clearFindButton);
-        filterRow.getChildren().setAll(scopeRow, findRow, autoRefreshCheck, refreshButton);
+        filterRow.getChildren().setAll(scopeRow, findRow);
         HBox.setHgrow(findRow, Priority.ALWAYS);
         filterBox.getChildren().setAll(filterRow);
-
-        classButtonRow.getChildren().setAll(checkAllButton, uncheckAllButton);
-        classButtons.getChildren().setAll(classButtonRow, includeEmptyCheck);
-        checkAllButton.setMaxWidth(Region.USE_COMPUTED_SIZE);
-        uncheckAllButton.setMaxWidth(Region.USE_COMPUTED_SIZE);
     }
 
     private void applyNarrowProfile() {
@@ -1125,21 +1160,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // stacking and ellipsis-with-tooltip on long names.
         modeRow.getChildren().clear();
         modeBox.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, exactCheck);
-        // Same two groups, same FlowPane. At this width they will usually wrap onto separate
-        // lines by themselves, which is what the other header zones do here too.
-        cellDisplayBox.getChildren().setAll(cellDisplayLabel, cellDisplayCombo);
-        modeAndDisplayRow.getChildren().setAll(modeBox, cellDisplayBox);
-        cellDisplayCombo.setMaxWidth(Double.MAX_VALUE);
 
         filterRow.getChildren().clear();
         scopeRow.getChildren().setAll(scopeLabel, scopeCombo);
         findRow.getChildren().setAll(findLabel, findField, clearFindButton);
-        filterBox.getChildren().setAll(scopeRow, findRow, autoRefreshCheck, refreshButton);
-
-        classButtonRow.getChildren().clear();
-        classButtons.getChildren().setAll(checkAllButton, uncheckAllButton, includeEmptyCheck);
-        checkAllButton.setMaxWidth(Double.MAX_VALUE);
-        uncheckAllButton.setMaxWidth(Double.MAX_VALUE);
+        filterBox.getChildren().setAll(scopeRow, findRow);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1193,28 +1218,12 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         options.useExactSelectedClassesProperty().addListener(exactListener);
         componentPane.setDisable(exactCheck.isSelected());
 
-        // Bidirectional, and that is the whole wiring: the combo is a second face for a value
-        // QuPath owns and persists (OverlayOptions.java:141), so it must follow the View menu and
-        // the viewer's right-click menu as readily as it drives them. Nothing here keeps a copy,
-        // and no preference of ours shadows it.
-        cellDisplayCombo.valueProperty().bindBidirectional(options.detectionDisplayModeProperty());
-
         scopeCombo.getSelectionModel().select(ClassVisibilityPreferences.scopeProperty().get());
         scopeCombo.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) -> {
             if (newValue != null) {
                 ClassVisibilityPreferences.scopeProperty().set(newValue);
                 controller.setScope(newValue);
             }
-        });
-
-        autoRefreshCheck.selectedProperty().bindBidirectional(
-                ClassVisibilityPreferences.autoRefreshCountsProperty());
-        autoRefreshCheck.selectedProperty().addListener((obs, oldValue, newValue) -> {
-            if (Boolean.TRUE.equals(newValue)) {
-                countsStale = false;
-                controller.requestHarvest(true);
-            }
-            updateHeaders();
         });
 
         includeEmptyCheck.selectedProperty().bindBidirectional(
@@ -1237,14 +1246,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             setCombination(VisibilityRuleModel.Combination.ALL);
         });
 
-        checkAllButton.setOnAction(e -> {
-            pushUndo(Strings.get("action.checkAllListed"));
-            model.checkClasses(filteredClasses.stream().map(ClassRow::pathClass).toList());
-        });
-        uncheckAllButton.setOnAction(e -> {
-            pushUndo(Strings.get("action.uncheckAllListed"));
-            model.uncheckClasses(filteredClasses.stream().map(ClassRow::pathClass).toList());
-        });
         clearRulesButton.setOnAction(e -> {
             pushUndo(Strings.get("action.clearAllRules"));
             model.clearAllRules();
@@ -1797,23 +1798,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         updateHeaders();
     }
 
-    /**
-     * @param mode a cell display mode
-     * @return QuPath's own label for it, verbatim from {@code qupath-gui-strings.properties}
-     *         ({@code OverlayActions.showCell*}). Copied rather than read from QuPath's bundle
-     *         because that bundle is not public API -- but copied WORD FOR WORD, because a combo
-     *         box and a menu that name the same four options differently is worse than either
-     *         wording alone.
-     */
-    private static String cellDisplayLabelFor(OverlayOptions.DetectionDisplayMode mode) {
-        return switch (mode) {
-            case BOUNDARIES_ONLY -> Strings.get("cellDisplay.boundaries");
-            case NUCLEI_ONLY -> Strings.get("cellDisplay.nuclei");
-            case NUCLEI_AND_BOUNDARIES -> Strings.get("cellDisplay.both");
-            case CENTROIDS -> Strings.get("cellDisplay.centroids");
-        };
-    }
-
     private static String displayName(PathClass pathClass) {
         if (pathClass == null || pathClass == PathClass.NULL_CLASS) {
             return Strings.get("row.unclassified");
@@ -1832,7 +1816,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         }
         updatePlaceholders();
         updateHeaders();
-        updateBulkButtonState();
+        updateCheckAllState();
         // The name cells render differently with a filter on -- matched text is bold -- and a
         // predicate change does not by itself re-render a row that survived the change.
         classTable.refresh();
@@ -1840,24 +1824,40 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     }
 
     /**
-     * Both bulk buttons act on the currently listed rows, so with nothing listed -- an empty
-     * image, or a filter that matches no class -- they have nothing to act on. Disabled beats a
-     * click that appears to be ignored; the list's placeholder says why the list is empty.
+     * Drive the class table's header check control from the rows the list is currently showing.
+     *
+     * <p>It acts on the listed rows only, so with nothing listed -- an empty image, or a filter
+     * that matches no class -- it has nothing to act on. Disabled beats a click that appears to
+     * be ignored; the list's placeholder says why the list is empty.</p>
+     *
+     * <p>Tri-state, and the indeterminate leg is not decoration: a two-state box over a partly
+     * checked list has to claim one of the two, and either claim is wrong about most of the rows
+     * underneath it. {@code setAllowIndeterminate} stays false so a click cycles checked /
+     * unchecked only -- indeterminate is a state this panel reports, never one the user is asked
+     * to pass through -- and from indeterminate JavaFX's own {@code fire()} lands on checked,
+     * which is the useful direction.</p>
      */
-    private void updateBulkButtonState() {
-        boolean nothingListed = filteredClasses.isEmpty();
-        checkAllButton.setDisable(nothingListed);
-        uncheckAllButton.setDisable(nothingListed);
-        // The way out of the blank viewer, marked on the control that takes it. Not while the
-        // button is disabled: a halo on a control that cannot be clicked points at a dead end.
+    private void updateCheckAllState() {
+        long checked = filteredClasses.stream()
+                .filter(row -> model.isClassSelected(row.pathClass()))
+                .count();
+        CheckAllState state = checkAllStateFor(filteredClasses.size(), checked);
+        boolean nothingListed = state == CheckAllState.NOTHING_LISTED;
+        headerCheckAll.setDisable(nothingListed);
+        headerCheckAll.setIndeterminate(state == CheckAllState.SOME);
+        headerCheckAll.setSelected(state == CheckAllState.ALL);
+        // The way out of the blank viewer, marked on the control that takes it. Not while it is
+        // disabled: a halo on a control that cannot be clicked points at a dead end.
         boolean everythingHidden = !nothingListed && isEverythingHidden();
-        checkAllButton.setEffect(everythingHidden ? everythingHiddenHalo : null);
-        checkAllButton.setTooltip(new Tooltip(everythingHidden
-                ? Strings.get("tooltip.button.checkAllListed.allHidden")
-                : Strings.get("tooltip.button.checkAllListed")));
-        checkAllButton.setAccessibleText(everythingHidden
-                ? Strings.get("accessible.checkAllListed.allHidden")
-                : Strings.get("button.checkAllListed"));
+        headerCheckAll.setEffect(everythingHidden ? everythingHiddenHalo : null);
+        headerCheckAll.setTooltip(new Tooltip(everythingHidden
+                ? Strings.get("tooltip.column.checkAll.allHidden")
+                : Strings.get("tooltip.column.checkAll")));
+        // A bare checkbox in a column header has no label at all, so this is not a nicety: it is
+        // the only name a screen reader can read out for it.
+        headerCheckAll.setAccessibleText(everythingHidden
+                ? Strings.get("accessible.checkAll.allHidden")
+                : Strings.get("accessible.checkAll"));
     }
 
     /**
@@ -1867,14 +1867,114 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      *         the sentence explaining it cannot disagree.
      */
     private boolean isEverythingHidden() {
-        return options.getSelectedClassVisibilityMode()
-                        == OverlayOptions.ClassVisibilityMode.SHOW_SELECTED
-                && model.activeRuleCount() == 0;
+        return isEverythingHidden(options.getSelectedClassVisibilityMode(), model.activeRuleCount());
+    }
+
+    /**
+     * The everything-hidden pair, as a static so every surface that has to react to it can be
+     * verified without a JavaFX toolkit.
+     *
+     * @param mode the visibility mode in force
+     * @param ruleCount how many entries are in the rule set
+     * @return whether this pair hides every object in every image
+     */
+    static boolean isEverythingHidden(OverlayOptions.ClassVisibilityMode mode, int ruleCount) {
+        return mode == OverlayOptions.ClassVisibilityMode.SHOW_SELECTED && ruleCount == 0;
+    }
+
+    /**
+     * @param mode the visibility mode in force
+     * @param ruleCount how many entries are in the rule set
+     * @return the empty rules table's placeholder text. Two strings, because there was one, and
+     *         it was a static Label claiming "Every object is visible" in the state the panel
+     *         opens in, where every object is hidden (external tester, 2026-09-01).
+     */
+    static String rulesPlaceholderText(OverlayOptions.ClassVisibilityMode mode, int ruleCount) {
+        return isEverythingHidden(mode, ruleCount)
+                ? Strings.get("placeholder.rules.empty.allHidden")
+                : Strings.get("placeholder.rules.empty");
+    }
+
+    /**
+     * What the {@code Active rules} table says about one rule, as a string key.
+     *
+     * @param exactMatchesOnly whether QuPath's {@code Exact matches only} is on
+     * @param source what produced the rule
+     * @param listedInImage whether the entry is itself one of the classes the list is showing
+     * @param reachesObjects whether the rule matches any object the class list is counting
+     * @return the status text
+     */
+    static String ruleStatusText(boolean exactMatchesOnly, VisibilityRuleModel.RuleSource source,
+                                 boolean listedInImage, boolean reachesObjects) {
+        if (exactMatchesOnly && source != VisibilityRuleModel.RuleSource.CLASS) {
+            return Strings.get("rules.status.exactOnly");
+        }
+        if (listedInImage) {
+            return Strings.get("rules.status.listed");
+        }
+        return reachesObjects
+                ? Strings.get("rules.status.derived")
+                : Strings.get("rules.status.noMatch");
+    }
+
+    /**
+     * What the always-visible status strip shows, given the standing state message.
+     *
+     * <p>The whole of item 6 is here. The routine message moves inside the {@code Active rules}
+     * expander; the everything-hidden warning does not, because it is the only on-screen
+     * explanation for a blank viewer; and the coverage note stays because it describes the click
+     * the user has just made.</p>
+     *
+     * @param standingText the standing state message
+     * @param alarm whether that message is the everything-hidden warning
+     * @param coverageNote the near-universal-component note, or null
+     * @return the strip text, empty when the strip should leave the layout
+     */
+    static String stripText(String standingText, boolean alarm, String coverageNote) {
+        String text = alarm ? standingText : "";
+        if (coverageNote != null && !coverageNote.isEmpty()) {
+            text = text.isEmpty() ? coverageNote : text + " " + coverageNote;
+        }
+        return text;
+    }
+
+    /** What the class table's header check control shows for the rows currently listed. */
+    enum CheckAllState {
+        /** Nothing is listed, so there is nothing to act on. */
+        NOTHING_LISTED,
+        /** No listed class is a rule. */
+        NONE,
+        /** Some are, some are not. */
+        SOME,
+        /** Every listed class is a rule. */
+        ALL
+    }
+
+    /**
+     * @param listed how many classes the list is currently showing
+     * @param checked how many of those are rules
+     * @return the header control's state. The {@code SOME} leg is not decoration: a two-state box
+     *         over a partly checked list has to claim one of the two, and either claim is wrong
+     *         about most of the rows underneath it.
+     */
+    static CheckAllState checkAllStateFor(int listed, long checked) {
+        if (listed <= 0) {
+            return CheckAllState.NOTHING_LISTED;
+        }
+        if (checked <= 0) {
+            return CheckAllState.NONE;
+        }
+        return checked >= listed ? CheckAllState.ALL : CheckAllState.SOME;
     }
 
     private void updateHeaders() {
-        int classTotal = classRows.size();
-        int classShown = filteredClasses.size();
+        // Present rows only, both numbers. "Include classes with no objects here" adds rows for
+        // project classes this image does not use, and counting those into a header that ends
+        // "in this image" made the class header disagree with the component list's spread
+        // denominator, which is census-only -- two numbers on screen, one image, no reconciling
+        // them. The unused rows are still listed, sorted last, showing a count of zero.
+        int classTotal = (int) classRows.stream().filter(ClassRow::present).count();
+        int classShown = (int) filteredClasses.stream().filter(ClassRow::present).count();
         int componentTotal = componentRows.size();
         int componentShown = filteredComponents.size();
         boolean filtered = !findField.getText().isEmpty();
@@ -1898,7 +1998,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         componentHeader.setText(filtered
                 ? Strings.format("header.components.filtered", componentShown, componentTotal)
                 : Strings.format("header.components", componentTotal));
-        String countHeaderText = countsStale || !autoRefreshCheck.isSelected()
+        String countHeaderText = countsStale
                 ? Strings.get("column.count.stale")
                 : Strings.get("column.count");
         setCountHeaderText(classTable, countHeaderText);
@@ -1907,10 +2007,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
     private static void setCountHeaderText(TableView<?> table, String text) {
         // By id, not by position: both tables let the user reorder their columns, and addressing
-        // "the last column" would eventually put "Count (stale)" over the wrong header.
+        // "the last column" would eventually put "Count (stale)" over the wrong header. On the
+        // column's own text since 0.2.0, so the table's menu button names it too.
         for (TableColumn<?, ?> column : table.getColumns()) {
-            if (COUNT_COLUMN_ID.equals(column.getId()) && column.getGraphic() instanceof Label label) {
-                label.setText(text);
+            if (COUNT_COLUMN_ID.equals(column.getId())) {
+                column.setText(text);
                 return;
             }
         }
@@ -1950,7 +2051,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         updateCombinationLabels();
         updateRuleTable();
         updateStatus();
-        updateBulkButtonState();
+        updateCheckAllState();
         classTable.refresh();
         componentTable.refresh();
     }
@@ -2026,8 +2127,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /**
      * Draw the eye to the Any / All group, once per session, for five seconds.
      *
-     * <p>Three gentle swells of the same blue halo the panel already uses for <i>Check all
-     * listed</i>, at 0.6 Hz -- see {@link #HINT_HALF_PERIOD} for why the rate matters. The pulse
+     * <p>Three gentle swells of the same blue halo the panel already uses for the class table's
+     * header check control, at 0.6 Hz -- see {@link #HINT_HALF_PERIOD} for why the rate matters. The pulse
      * is pure emphasis: the label beside it already states the rule in words, and nothing here
      * encodes information that is available only from the motion or only from the colour.</p>
      *
@@ -2103,21 +2204,22 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
                 case COMPONENTS_ALL -> Strings.get("rules.source.componentsAll");
                 case ELSEWHERE -> Strings.get("rules.source.elsewhere");
             };
-            String status;
-            if (exactCheck.isSelected() && ruleSource != VisibilityRuleModel.RuleSource.CLASS) {
-                status = Strings.get("rules.status.exactOnly");
-            } else if (present.contains(entry == null ? PathClass.NULL_CLASS : entry)) {
-                status = Strings.get("rules.status.listed");
-            } else if (ruleSource == VisibilityRuleModel.RuleSource.COMPONENTS_ALL) {
-                status = Strings.get("rules.status.composite");
-            } else {
-                status = Strings.get("rules.status.notInImage");
-            }
+            // What the status column has to answer is "is this rule doing anything", and until
+            // 0.2.0 it answered "is this rule's name a row above" -- which is a different
+            // question and gets the combinatorial case backwards. A rule for CD8 in an image
+            // whose objects all carry CD8: GzB has no row of its own and hides thousands of
+            // objects, and the table called that "Not in this image" (external tester,
+            // 2026-09-01). The three live statuses now come off the same predicate the Affects
+            // column uses, so the two cannot disagree.
+            String status = ruleStatusText(exactCheck.isSelected(), ruleSource,
+                    present.contains(entry == null ? PathClass.NULL_CLASS : entry),
+                    !ruleReachesNothing(entry));
             rows.add(new RuleRow(entry, name, source, status));
         }
         ruleRows.setAll(rows);
-        // Nothing to clear is not the same as a broken button. The table's own placeholder --
-        // "No rules are active." -- is the explanation sitting right beside it.
+        updateRulesPlaceholder();
+        // Nothing to clear is not the same as a broken button. The table's own placeholder is
+        // the explanation sitting right beside it.
         clearRulesButton.setDisable(rows.isEmpty());
         int count = rows.size();
         rulesPane.setText(count == 0
@@ -2125,11 +2227,42 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
                 : count == 1 ? Strings.get("rules.one") : Strings.format("rules.many", count));
     }
 
+    /**
+     * The empty-rules-table message, which has to name the mode.
+     *
+     * <p>It was a static Label reading <i>"No rules are active. Every object is visible."</i> --
+     * true under <i>Hide checked classes</i>, and the exact opposite of the truth under
+     * <i>Show only checked classes</i> with nothing checked, which is the state this panel
+     * <b>opens in</b>. So the table asserted that everything was visible directly above a status
+     * strip saying every object was hidden, and an external tester photographed both at once
+     * (2026-09-01).</p>
+     */
+    private void updateRulesPlaceholder() {
+        Label label = new Label(rulesPlaceholderText(
+                options.getSelectedClassVisibilityMode(), model.activeRuleCount()));
+        label.setWrapText(true);
+        ruleTable.setPlaceholder(label);
+    }
+
+    /**
+     * @param entry a rule in force
+     * @return whether it matches no object the class list is counting. Deliberately
+     *         {@link #affectedObjects(PathClass)} rather than "is this entry a row above": a rule
+     *         is doing its job whenever it reaches an object, and on a combinatorial panel it
+     *         usually reaches them through classes containing its parts rather than through a
+     *         class of its own name. Same predicate as the Affects column.
+     */
+    private boolean ruleReachesNothing(PathClass entry) {
+        return affectedObjects(entry) == 0;
+    }
+
     private void updateStatus() {
         if (harvesting && currentImageName != null) {
-            statusLabel.setText(Strings.format("status.s6", currentImageName));
-            statusLabel.setFont(Font.getDefault());
+            // Progress, not a standing state: it belongs beside the spinner, which is on the
+            // strip, and it is gone again within a frame or two.
+            showStripText(Strings.format("status.s6", currentImageName), false);
             statusButtons.getChildren().clear();
+            updateStripVisibility();
             return;
         }
         // Counts are of set entries, not checked rows. A rule whose class is absent from the
@@ -2175,35 +2308,87 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             text = count == 1 ? Strings.get("status.s3.one") : Strings.format("status.s3.many", count);
             buttons.add(resetButton);
         }
-        int orphans = countOrphanRules();
+        // Only claimed when there is a census to claim it against. With no objects in the
+        // chosen List scope every rule trivially reaches nothing, and saying so would be a
+        // statement about the scope dressed up as a statement about the rules.
+        int orphans = census.isEmpty() ? 0 : countOrphanRules();
         if (orphans > 0 && count > 0 && !noImage) {
             text = text + " " + (orphans == 1
                     ? Strings.get("status.s7.one")
                     : Strings.format("status.s7.many", orphans));
         }
-        if (coverageNote != null) {
-            text = text + " " + coverageNote;
-        }
-        statusLabel.setText(text);
-        // Severity is carried by the [OK] / [i] / [!] text markers and by weight, never by colour
-        // alone -- an accessibility requirement, and it keeps the panel theme-neutral.
-        statusLabel.setFont(alarm
-                ? Font.font(Font.getDefault().getFamily(), FontWeight.BOLD, Font.getDefault().getSize())
-                : Font.getDefault());
+        rulesStatusLabel.setText(text);
+        rulesStatusLabel.setAccessibleText(text);
+        // The split (external tester, 2026-09-01: "put inside drop down"). The routine "N rules
+        // active" sentence is a standing description of a state the user built on purpose, and
+        // it sat on screen permanently for the whole session; it now lives inside the Active
+        // rules expander, whose own title already carries the count.
+        //
+        // status.s2 does NOT move, and this is the one place in this round where less on screen
+        // would have been worse. It is the only on-screen explanation for a blank viewer, and
+        // burying the sentence that explains an empty image inside a collapsed control is the
+        // exact failure this panel exists to prevent (finding C1, story R2). The coverage note
+        // stays too: it describes the click the user just made, and a response nobody can see is
+        // not a response.
+        showStripText(stripText(text, alarm, coverageNote), alarm);
         if (undoSlot != null) {
             undoButton.setText(Strings.format("button.undo.named", undoSlot.actionLabel()));
             buttons.add(0, undoButton);
         }
         statusButtons.getChildren().setAll(buttons);
-        statusLabel.setAccessibleText(text);
+        updateStripVisibility();
     }
 
+    /**
+     * Take the always-visible strip out of the layout when it holds neither a message nor a
+     * button. With the routine sentence gone the strip is usually empty, and an empty strip that
+     * still claims its padding is the panel reserving space for nothing -- which is the complaint
+     * this round is answering.
+     */
+    private void updateStripVisibility() {
+        boolean anything = statusLabel.isManaged() || !statusButtons.getChildren().isEmpty();
+        statusBox.setVisible(anything);
+        statusBox.setManaged(anything);
+    }
+
+    /**
+     * Put text on the always-visible strip, or take the strip out of the layout when there is
+     * none. Unmanaged rather than merely blank: an empty label still claims a line, and a blank
+     * line that appears and disappears as the state changes is the panel twitching at the user.
+     *
+     * @param text what to show; empty removes the strip
+     * @param alarm whether this is the everything-hidden warning
+     */
+    private void showStripText(String text, boolean alarm) {
+        boolean any = !text.isEmpty();
+        statusLabel.setText(text);
+        statusLabel.setAccessibleText(text);
+        statusLabel.setVisible(any);
+        statusLabel.setManaged(any);
+        // Severity is carried by the [OK] / [i] / [!] text markers and by weight, never by colour
+        // alone -- an accessibility requirement, and it keeps the panel theme-neutral.
+        statusLabel.setFont(alarm
+                ? Font.font(Font.getDefault().getFamily(), FontWeight.BOLD, Font.getDefault().getSize())
+                : Font.getDefault());
+    }
+
+    /**
+     * @return how many rules in force reach no object the class list is counting.
+     *
+     *         <p>This counted set membership until 0.2.0 -- "is this entry one of the classes in
+     *         the census" -- which made two different things read as orphans that are not: an
+     *         {@code All} composite, which is never a class in anybody's image and yet is the
+     *         whole point of the Components list, and any rule matching only through derived
+     *         classes. An external tester saw <i>"1 rule active -- only objects matching it are
+     *         shown. 1 rule has no class in this image."</i> over an image she knew carried those
+     *         cells, with the rules table calling the same entry a composite in the same breath
+     *         (2026-09-01). Counting what a rule reaches makes the strip, the rules table and the
+     *         Affects column three views of one number.</p>
+     */
     private int countOrphanRules() {
-        Set<PathClass> present = new LinkedHashSet<>(census.classes());
         int orphans = 0;
         for (PathClass entry : model.activeRules()) {
-            PathClass key = entry == null ? PathClass.NULL_CLASS : entry;
-            if (!present.contains(key)) {
+            if (ruleReachesNothing(entry)) {
                 orphans++;
             }
         }

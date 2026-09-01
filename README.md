@@ -3,7 +3,7 @@
 Show or hide QuPath objects by class, or by one component of a class name, from a floating
 panel you can dock into QuPath's analysis pane.
 
-A QuPath 0.7 extension, version 0.1.2. It is a port of the community Groovy script
+A QuPath 0.7 extension, version 0.2.0. It is a port of the community Groovy script
 *"Show specific classes of objects v3"* ([image.sc topic 31828](https://forum.image.sc/t/31828)),
 which stopped working when `OverlayOptions.hiddenClassesProperty()` was removed.
 
@@ -53,7 +53,9 @@ of overlapping supersets. Everything the panel adds exists because of that shape
   `positive`, `pos`, `neg` or `Cell` in nearly every class name, and on screen those look
   exactly like markers. The number tells you a component is a near-synonym for "everything"
   *before* you click it, and its row tooltip carries the object figures too:
-  `In 26 of the 28 classes in this image, and 401,552 of 452,110 objects.`
+  `In 26 of the 28 classes in this image, and 401,552 of 452,110 objects.` It is off by
+  default and one click away, in the column menu button at the right of the component list's
+  header; the warning it carries also fires at the moment you click such a row, without it.
 - **`Find` over the component list**. The built-in pane's filter is better than ours over
   classes; it has nothing at all to filter components with, because it has no components.
   Whatever you type is shown in **bold** in the rows it matched.
@@ -116,9 +118,9 @@ still open, *Restore the state from when the panel opened* brings them back with
 
 You are not left to work out the blank viewer either. The status strip says
 `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` the
-moment it happens; **`Check all listed` carries a blue halo** for as long as it is true, and
-one click on it puts every listed class back; and `Switch to "Hide checked classes"` and
-`Reset all` sit beside the message.
+moment it happens; **the check box in the classes list's header carries a blue halo** for as
+long as it is true, and one click on it puts every listed class back; and
+`Switch to "Hide checked classes"` and `Reset all` sit beside the message.
 
 **The toolbar button opens the panel as a window.** It sits immediately right of the
 brightness/contrast button, and it is drawn as an **eye**, slashed whenever classes are being

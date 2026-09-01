@@ -58,7 +58,7 @@ public final class CombinationHint {
         lastCount = checkedComponents;
         if (checkedComponents < 2) {
             // Below two the control is disabled, and a pulse on a disabled control points at a
-            // dead end -- the same rule the "Check all listed" halo follows.
+            // dead end -- the same rule the class table's check-all halo follows.
             return Cue.STOP;
         }
         if (!mayFire || previous >= 2 || shownThisSession) {

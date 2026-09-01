@@ -147,8 +147,9 @@ equivalent, and nothing in it changes object data of any kind.
 
 - **The class list refreshes.** The script harvested classes once, when the window opened,
   and never again -- so a classifier run, or switching image, left you looking at a stale
-  list. This panel follows the active image and re-harvests. On very large images you can
-  turn that off with `Auto-refresh counts` and recount on demand.
+  list. This panel follows the active image and re-harvests, off the main thread and after a
+  short pause once you stop changing things, so a very large image does not make it feel
+  slow -- and hiding never waits on a count.
 - **There is only ever one panel.** Running the script twice gave you two windows whose
   listeners fought over one set of viewer state. The toolbar button reveals the one panel;
   it never creates a second.
@@ -160,9 +161,9 @@ equivalent, and nothing in it changes object data of any kind.
 - **Blanking the view is now announced, reversible, and temporary.** The script blanked your
   image on open and said nothing. This panel does the same thing, then states it --
   `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` --
-  haloes `Check all listed` as the one-click way back, records what you had first, and puts
-  that record back when you close the panel.
-- **You can get back.** Between `Check all listed`, `Reset all` in the panel and
+  haloes the check box at the top of the classes list as the one-click way back, records what
+  you had first, and puts that record back when you close the panel.
+- **You can get back.** Between that check box, `Reset all` in the panel and
   `Restore the state from when the panel opened` on the toolbar button's menu, there is always
   a way out of a state where you cannot see anything -- including states the panel did not
   cause. See [If everything disappears](user-guide.md#if-everything-disappears).

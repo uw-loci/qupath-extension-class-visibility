@@ -351,16 +351,36 @@ already been got wrong once somewhere.
    `PathClass.fromCollection`, so interning holds.
 4. **Spread is over classes, not objects.** The component list's `Spread` column counts how
    many distinct classes contain the component. Deriving it from object counts is wrong, and
-   it is what stops a degenerate component like `positive` reading as one.
-5. **A count shown beside a control must be the count that control acts on, or be joined by
-   one that is.** The class list ships two columns for this reason: `Count` (objects carrying
-   exactly this class) and `Affects` (objects a click would move, right now, under the current
-   `Exact matches only` setting). `ClassCensus.matchedObjectsForClass` mirrors
+   it is what stops a degenerate component like `positive` reading as one. The column is off
+   by default as of 0.2.0; the warning it carries also reaches the user through `status.s9`
+   and `tooltip.row.component.coverage`, which is what makes hiding it safe.
+5. **A count shown beside a control must be the count that control acts on.** The class list
+   shows `Affects` (objects a click would move, right now, under the current
+   `Exact matches only` setting) and hides `Count` (objects carrying exactly this class)
+   behind the column menu. `ClassCensus.matchedObjectsForClass` mirrors
    `OverlayOptions.isPathClassHidden` including its `isDerivedClass()` guard; if that
    predicate ever drifts from QuPath's, `Affects` becomes a confident lie, which is worse than
-   the single-column state it replaced (finding S1).
-6. **The status strip counts set entries, not rows.** A rule with no visible row is still a
-   rule.
+   the single-column state it replaced (finding S1). The component list keeps `Count` and has
+   no `Affects`, because `countForComponent` is already "objects whose class contains this
+   component" -- the same predicate a component rule matches on, so the two would be one
+   number printed twice.
+
+   Since a hidden column is only reachable through the table's own menu, **every column the
+   menu offers must carry `setText`**. `TableViewSkinBase` binds each menu item to
+   `column.textProperty()` and to nothing else, so a header built as a blank-texted graphic
+   `Label` -- which is the only way to hang a tooltip on a header -- appears in the menu as an
+   empty row. `nameAndExplain` sets the text on the column and attaches the tooltip to
+   `TableColumn.getStyleableNode()` instead, re-running when a column is shown or hidden,
+   because the header row rebuilds its children then. `keepColumnVisible` re-shows either
+   checkbox column if the menu hides it; that column carries the check-all control.
+6. **Anything that reports on a rule must ask what the rule reaches, never whether its name is
+   a key in the census -- and it counts set entries, not rows.** A rule with no visible row is
+   still a rule. Set membership is not the question a user is asking, and on combinatorial
+   class names it answers backwards: a class rule usually matches only through derived
+   classes, and an `All` composite is never a census key by construction. Route every such
+   count through `ClassCensus.matchedObjectsForClass`, as `countOrphanRules()`,
+   `ruleStatusText` and the `Affects` column all now do. This shipped wrong in 0.1.x, on
+   exactly the data the extension is for.
 7. **Scope `All objects` must not use the `synchronized` hierarchy accessors**
    (`getAllObjects(boolean)`, `getFlattenedObjectList(...)`) -- they contend with a running
    classifier for the length of a million-object walk.
@@ -411,12 +431,17 @@ already been got wrong once somewhere.
 16. **A preset's restore writes viewer state first and rules last.** The mode and the exact
     flag change what a given rule set *means*, so writing them after the rules repaints once
     through a combination the preset does not describe.
-17. **The everything-hidden signal is never colour-only.** The halo on `Check all listed` is
-    one of four channels, and the other three are text: the status strip's `status.s2`, the
-    button's `tooltip.button.checkAllListed.allHidden`, and its
-    `accessible.checkAllListed.allHidden`. `isEverythingHidden()` and the strip's `status.s2`
-    branch read the same two facts, so the halo and the sentence explaining it cannot
-    disagree; keep them reading the same predicate.
+17. **The everything-hidden signal is never colour-only, and one function decides it.** The
+    halo on the classes table's header check box is one channel; the others are text --
+    `status.s2` on the always-visible strip, `placeholder.rules.empty.allHidden` in the empty
+    rules table, `tooltip.column.checkAll.allHidden` and `accessible.checkAll.allHidden` on
+    the control itself, and `tooltip.toolbar.rules.allHidden` from outside the panel. All of
+    them read `isEverythingHidden(mode, ruleCount)`, which is static precisely so a test can
+    pin the pairing without a toolkit. Route any new report of that state through it; the
+    placeholder and the strip disagreeing on screen is a shipped 0.1.x bug, not a hypothetical.
+    `status.s2` and `status.s9` stay on the always-visible strip while the routine status lives
+    inside the `Active rules` expander -- burying the only explanation for a blank viewer, or a
+    reply to the click just made, defeats the point of having them.
 18. **Solo is one operation, not two.** `VisibilityRuleModel.soloClass` / `soloComponent` set
     the rule contents *and* switch the mode, inside one FX event. Splitting them across layers
     -- the model owning the set, the Pane owning the mode -- leaves a caller who uses only the

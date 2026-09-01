@@ -25,6 +25,10 @@ import qupath.lib.gui.prefs.PathPrefs;
  *       across a restart, which widens rather than narrows the failure mode.</li>
  *   <li><b>The visibility mode and the exact-match flag.</b> QuPath already persists both. We
  *       read and write the live properties and never keep a second copy.</li>
+ *   <li><b>Whether counts refresh automatically.</b> Removed in 0.2.0 with the checkbox it
+ *       backed. Counts always follow the objects; the debounce and the off-thread harvest are
+ *       what make that affordable, and a preference whose off position produces silently stale
+ *       numbers is not a choice worth offering.</li>
  * </ul>
  *
  * <p>Pattern source: {@code qupath-extension-confusion-matrix/preferences/CMPreferences.java}.</p>
@@ -43,7 +47,6 @@ public final class ClassVisibilityPreferences {
     private static DoubleProperty wideDividerProperty;
     private static DoubleProperty narrowDividerProperty;
     private static BooleanProperty rulesExpandedProperty;
-    private static BooleanProperty autoRefreshCountsProperty;
     private static BooleanProperty includeEmptyClassesProperty;
     private static BooleanProperty highlightNewControlsProperty;
     private static DoubleProperty coverageThresholdProperty;
@@ -73,8 +76,6 @@ public final class ClassVisibilityPreferences {
                 PREFIX + "narrowDivider", 0.55);
         rulesExpandedProperty = PathPrefs.createPersistentPreference(
                 PREFIX + "rulesExpanded", false);
-        autoRefreshCountsProperty = PathPrefs.createPersistentPreference(
-                PREFIX + "autoRefreshCounts", true);
         includeEmptyClassesProperty = PathPrefs.createPersistentPreference(
                 PREFIX + "includeEmptyClasses", false);
         // On by default: the control it teaches is inert below two checked components and says so
@@ -160,12 +161,6 @@ public final class ClassVisibilityPreferences {
     public static BooleanProperty rulesExpandedProperty() {
         ensureInstalled();
         return rulesExpandedProperty;
-    }
-
-    /** @return whether counts re-harvest automatically when the hierarchy changes. */
-    public static BooleanProperty autoRefreshCountsProperty() {
-        ensureInstalled();
-        return autoRefreshCountsProperty;
     }
 
     /** @return whether project classes with no objects in this image are listed too. */

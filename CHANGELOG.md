@@ -4,6 +4,186 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.2.0
+
+**Two bug fixes and a simplification pass.** The bugs are first because one of them changed
+what the panel *told* you about your own filter, and if you used 0.1.x on multiplexed data it
+is worth two minutes.
+
+An external tester, **Sara McArdle**, ran the extension on her own multiplexed images and
+reported both bugs; her verdict on everything else -- *"I like a lot about it, there's a lot
+that's clever, but overall, it's too much"* -- is why the rest of this release takes things
+off the screen rather than adding them. Two combo boxes, one checkbox, three buttons and two
+table columns are gone from the default view. **Presets are untouched**, in code and in
+behaviour; every preset saved by 0.1.x still loads.
+
+### A rule you were told was doing nothing may have been hiding thousands of objects
+
+This is the one to read. **No object was ever hidden or shown wrongly** -- the viewer was
+always right, and no preset, rule or saved file is affected. What was wrong was the sentence
+describing it, and it was wrong in the direction that matters: it called a working rule inert.
+
+`1 rule has no class in this image.` on the status strip, and `Not in this image` and
+`Composite -- not in QuPath's class list` in the `Active rules` table, all asked the same
+question, and it was the wrong one: **is this rule's name one of the class names I found in
+this image?** That is set membership. It is not what a user is asking, and on combinatorial
+class names it gets the answer backwards two different ways:
+
+- A rule for `CD8+` on an image where every object is classified `CD8+: GzB+` or `CD8+: PD1+`
+  matched no class name *literally*, so it was reported as having no class in the image --
+  while hiding every one of those objects. This is the normal case on a multiplex panel rather
+  than an edge case: when almost nothing is a bare marker class, almost every useful rule
+  reaches its objects through derived class names rather than by exact name.
+- An `All` combination built from the components list -- `CD8+ + GzB+ (all components)` -- is
+  **never** a class name in anybody's image. That is the whole point of it. So every `All`
+  composite rule ever made was miscounted this way, by construction, and the two messages
+  openly contradicted each other in the same frame: the rules table called the entry a
+  composite while the strip counted the same entry as having no class here.
+
+Every one of those counts now asks what the rule actually **reaches** -- the same number the
+`Affects` column has always shown, which is the number that mirrors QuPath's own matching.
+The strip, the `Active rules` status column and the `Affects` column are now three renderings
+of one figure and cannot disagree.
+
+The wording changed with the meaning:
+
+| where | 0.1.x | 0.2.0 |
+|---|---|---|
+| the status sentence | `1 rule has no class in this image.` | `1 rule matches nothing listed above.` -- and it moved into `Active rules` with the rest of the routine status, below |
+| `Active rules` status, a class rule | `Not in this image` | `Matches classes listed above` -- or `Matches nothing listed above`, if it really does reach nothing |
+| `Active rules` status, an `All` composite | `Composite -- not in QuPath's class list` | the same two, decided by the same test |
+
+`Composite` is gone from the status column rather than corrected. The `Rule` column already
+renders the entry as `CD8+ + GzB+ (all components)` and the `Source` column already reads
+`Components (All)`, so the status column was spending itself on a fact stated twice beside it
+instead of on the only thing it is there for: whether the rule is doing anything.
+
+Two smaller consequences of the same fix. The clause is now **suppressed entirely when the
+list is empty** -- with no objects in the chosen `List` scope every rule trivially reaches
+nothing, and reporting that would be a statement about the scope dressed up as a statement
+about your rules. And soloing a component with `Exact matches only` on no longer claims to be
+showing a population over a blank viewer; the strip now appends
+`1 rule matches nothing listed above.` to that sentence, which is what is happening.
+
+### The `Active rules` table asserted the opposite of the truth when it was empty
+
+Also reported by the tester, and visible on **every launch**. With no rules yet, the empty
+`Active rules` table read `No rules are active. Every object is visible.` -- true under
+`Hide checked classes`, and the exact inverse under `Show only checked classes` with nothing
+checked, which is the state the panel deliberately opens in. So the table contradicted the
+status strip four inches below it, in the state a first-time user meets first.
+
+The empty table now reads, when that is the case:
+`No rules are active, and "Show only checked classes" is on, so every object is hidden. Check
+a class above to see it.` One function now decides the everything-hidden condition, and the
+four places that report it -- the status strip, this placeholder, the haloed check control and
+the toolbar button's tooltip -- all read it, so they cannot drift apart again.
+
+### The classes header counted rows it then placed "in this image"
+
+Found while sweeping for more of the same, not reported. With
+`Include classes with no objects here` ticked, `Classes on detections in this image (28)`
+included the project's classes **this image does not use** -- so the header asserted "in this
+image" over rows that by definition failed it, and disagreed with the spread denominator in
+the component list right beside it. Both numbers in that header now count present rows only.
+The unused rows are still listed, still sort last, and still show a count of zero.
+
+### What came off the screen
+
+- **The `Cell display` combo is gone.** It was the one control in the panel with nothing to do
+  with classes, and it duplicated QuPath's own `View > Cell display`. In its place is a line of
+  static text: `Cell visibility is also affected by Cell display settings -- see QuPath's View
+  menu.` **Presets still save and restore the cell display mode**, and so does the automatic
+  snapshot taken when the panel opens -- both were left exactly as they were.
+
+- **`Auto-refresh counts` is gone, and counts always refresh.** The checkbox, the `Refresh`
+  button it revealed and the saved preference are all deleted. Turning it off bought
+  responsiveness on a very large image at the price of numbers that were silently the previous
+  run's, which is the failure mode the `Count (stale)` marker exists to catch. Everything that
+  made counting cheap is still there and was never a user-facing option: the 300 ms debounce,
+  the off-thread harvest, the spinner and its grace period, and the dropping of superseded
+  results. `Count (stale)` still marks the column while a recount is in flight, and now means
+  only that.
+
+- **Two table columns are off by default.** The classes list shows the checkbox, the class and
+  **`Affects`**; `Count` is off. The components list shows the checkbox, the component and
+  `Count`; `Spread` is off. Both are one click away in the **column menu button** at the right
+  end of each table's header row, and neither number has changed.
+
+  `Affects` is the one kept because it is the one that answers "what will this click do".
+  `Count` is objects carrying exactly that class, and on a combinatorial panel a click reaches
+  several times more than that -- showing both side by side put a trap next to the answer. The
+  component list keeps `Count` instead, because for a component row there is no gap: a
+  component's count is already "objects whose class contains this component", which is exactly
+  what a component rule matches.
+
+  **The classes list now sorts by `Affects` descending** by default, where it used to sort by
+  `Count`; the intent is the same -- most populous first -- but a table sorted by a column
+  nobody can see is sorted for no stated reason. **`Affects` is also no longer dropped when the
+  panel is narrow**, which it used to be to give class names room. With `Count` off the names
+  have that room anyway, and hiding `Affects` would have hidden the one number on the row that
+  says what the click does.
+
+  **The column menu was listing every column as a blank row**, which would have made "one click
+  away" false as shipped. JavaFX reads those menu entries from a column's text, and every
+  header in this panel had its text blanked so it could carry a tooltip. The names are back on
+  the columns and the tooltips now attach to the header itself, so the menu names what it
+  offers. One wart remains, reported rather than fixed: the checkbox columns have no name, so
+  each still appears in its menu as a blank entry. Clicking it now does nothing -- the checkbox
+  column re-shows itself immediately, in both tables -- where in 0.1.2 it removed the column.
+
+- **`Check all listed` and `Uncheck all listed` are gone**, replaced by a single check box in
+  the **header of the classes list's checkbox column**. It does both jobs, and it still acts on
+  exactly what is listed, so a `Find` filter still limits it. It is three-state: ticked when
+  everything listed is checked, clear when nothing is, and dashed when some are -- a plain box
+  over a partly-checked list has to claim one of the two and is wrong about most of the rows
+  under it. Clicking cycles checked and unchecked only; you are never made to click through the
+  dashed state. With nothing listed it is disabled, as the two buttons were, so a click on an
+  empty list cannot look ignored. `Undo` still names the step: `Undo "Check all listed"`.
+
+  **The blue halo moved here** from `Check all listed`. When every object is hidden, this is
+  now the control that puts them back, and it is haloed for as long as that is true. A bare box
+  in a header has no visible label, so its tooltip and its screen-reader text carry the whole
+  meaning and both change with that state.
+
+- **The routine status sentence moved into the `Active rules` expander.** `[OK] No class rules
+  active`, `[i] 3 rules active -- only objects matching them are shown`, the solo messages and
+  the new matches-nothing clause now live inside it, instead of holding a line of the panel
+  open all session. The expander's own title already carries the count -- `Active rules (3)` --
+  so the number is still on screen without opening anything, and so is the toolbar button's
+  tooltip, which carries it from outside the panel entirely.
+
+  **The `[!] Every object is hidden` warning stays on the always-visible strip**, deliberately.
+  It is the only on-screen explanation for a blank viewer, and burying it inside a collapsed
+  control would be the exact failure this panel exists to prevent. The
+  `"positive" is in 26 of 28 classes and 401,552 of 452,110 objects.` note stays out there too:
+  it describes the click you just made and clears on the next one, so inside a collapsed
+  expander it would be a reply nobody sees. `Undo`, `Reset all` and
+  `Switch to "Hide checked classes"` are all where they were.
+
+  **An empty strip now leaves the layout** rather than holding a blank line and its padding
+  open for the whole session.
+
+- 129 unit tests, up from 118. The new `SimplificationTest` pins each of the above where it
+  could regress quietly: that a rule reaching objects only through derived class names is not
+  reported as absent, that an `All` composite is not either while it is hiding things, that a
+  rule which really does reach nothing is still reported, that the empty rules table and the
+  status strip cannot disagree about whether everything is hidden, that the warning never moves
+  inside the expander, and that the coverage note stays on the strip.
+
+**Not verified.** Still built and tested on Linux only; nothing here has been exercised on
+macOS or Windows. Within Linux, the new header check box has not been clicked in a running
+QuPath, and neither the recovered column menu nor the collapsing status strip has been looked
+at -- both are pinned by tests over the logic, not by rendering. See *Reporting a problem* in
+the [README](README.md).
+
+**One thing that would settle the first bug as a sighting rather than a class of cases.** Both
+mechanisms above are fixed and tested either way, but if you saw
+`1 rule has no class in this image.` on an image you knew carried that marker, the preset JSON
+from that project (one small file under `resources/class-visibility` in the project directory)
+or a screenshot of the expanded `Active rules` table says immediately which of the two
+mechanisms you were on.
+
 ## 0.1.2
 
 A layout fix for something users could see, and one small addition. Nothing about how the

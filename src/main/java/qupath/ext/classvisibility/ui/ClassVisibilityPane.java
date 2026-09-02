@@ -125,8 +125,33 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** Coverage emphasis is suppressed entirely below this many classes. */
     private static final int COVERAGE_EMPHASIS_MIN_CLASSES = 5;
 
-    /** Gap between a class colour swatch and the name beside it. */
+    /**
+     * The panel's one spacing unit. Every inset, every row gap and every gap between zones is
+     * this, or an explicit multiple of it.
+     *
+     * <p>Before 0.2.1 there were six values in play -- 2, 4, 6, 8, 12 and a bare 6 on the pane --
+     * arrived at one control at a time, which is why the two list headers ended up sitting flush
+     * against the bar above them while other seams had room to spare (user, 2026-09-01). The
+     * header is being rebuilt in this release anyway, so the rhythm is settled here rather than
+     * patched with a seventh number.</p>
+     */
+    private static final double GAP = 6;
+
+    /**
+     * The one deliberate exception: a caption sitting directly on the control it names, where a
+     * full {@link #GAP} would read as a gap between two unrelated things rather than as a label.
+     * Used by the <i>Visibility rule:</i> and <i>Checked components combine as:</i> groups only.
+     */
+    private static final double CAPTION_GAP = 2;
+
+    /**
+     * Gap between a class colour swatch and the name beside it. Inside a table cell rather than
+     * in the panel's vertical rhythm, so it is its own number and is exempt from {@link #GAP}.
+     */
     private static final double GRAPHIC_GAP = 4;
+
+    /** Smallest useful height for either list, below which the table is all header and scrollbar. */
+    private static final double TABLE_MIN_HEIGHT = 120;
 
     /**
      * The halo colour for the class table's header check control while every object is hidden.
@@ -239,23 +264,23 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final Label presetLabel = new Label(Strings.get("label.presets"));
     private final Label scopeLabel = new Label(Strings.get("label.scope"));
     private final Label findLabel = new Label(Strings.get("label.find"));
-    private final HBox imageRow = new HBox(6);
-    private final HBox presetRow = new HBox(4);
+    private final HBox imageRow = new HBox(GAP);
+    private final HBox presetRow = new HBox(GAP);
     /** One instance whose text follows whether a project is open. */
     private final Tooltip presetTooltip = new Tooltip(Strings.get("tooltip.presets"));
-    private final HBox scopeRow = new HBox(4);
-    private final HBox findRow = new HBox(4);
-    private final HBox exactWarningBox = new HBox(6);
-    private final HBox statusButtons = new HBox(6);
+    private final HBox scopeRow = new HBox(GAP);
+    private final HBox findRow = new HBox(GAP);
+    private final HBox exactWarningBox = new HBox(GAP);
+    private final HBox statusButtons = new HBox(GAP);
     /** The always-visible strip. Out of the layout entirely when it has nothing to say. */
-    private final VBox statusBox = new VBox(4);
-    private final VBox modeBox = new VBox(2);
-    private final HBox modeRow = new HBox(12);
-    private final VBox filterBox = new VBox(4);
-    private final HBox filterRow = new HBox(8);
+    private final VBox statusBox = new VBox(GAP);
+    private final VBox modeBox = new VBox(CAPTION_GAP);
+    private final HBox modeRow = new HBox(GAP * 2);
+    private final VBox filterBox = new VBox(GAP);
+    private final HBox filterRow = new HBox(GAP);
     private final SplitPane splitPane = new SplitPane();
-    private final VBox classPane = new VBox(4);
-    private final VBox componentPane = new VBox(4);
+    private final VBox classPane = new VBox(GAP);
+    private final VBox componentPane = new VBox(GAP);
     private final TitledPane rulesPane = new TitledPane();
 
     private ClassCensus census = ClassCensus.EMPTY;
@@ -620,7 +645,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     }
 
     private void buildUi() {
-        setPadding(new Insets(6));
+        setPadding(new Insets(GAP));
 
         // Centre ellipsis, not the default trailing one: image names in a project share long
         // prefixes and differ near the end, so a trailing ellipsis truncates away the only part
@@ -654,7 +679,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         presetSaveButton.setTooltip(new Tooltip(Strings.get("tooltip.button.presetSave")));
         presetDeleteButton.setTooltip(new Tooltip(Strings.get("tooltip.button.presetDelete")));
         HBox.setHgrow(presetCombo, Priority.ALWAYS);
-        presetRow.getChildren().setAll(presetLabel, presetCombo, presetSaveButton, presetDeleteButton);
+        // Contents are set per profile: the wide one puts "List:" on the end of this row.
         presetRow.setAlignment(Pos.CENTER_LEFT);
 
         ToggleGroup modeGroup = new ToggleGroup();
@@ -674,12 +699,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         HBox.setHgrow(exactWarningLabel, Priority.ALWAYS);
         exactWarningBox.getChildren().addAll(exactWarningLabel, turnOffExact);
         exactWarningBox.setAlignment(Pos.CENTER_LEFT);
-        exactWarningBox.setPadding(new Insets(4, 0, 4, 0));
+        exactWarningBox.setPadding(new Insets(GAP, 0, GAP, 0));
         exactWarningBox.visibleProperty().bind(exactCheck.selectedProperty());
         exactWarningBox.managedProperty().bind(exactCheck.selectedProperty());
 
         scopeCombo.getItems().setAll(ClassHarvester.Scope.values());
         scopeCombo.setTooltip(new Tooltip(Strings.get("tooltip.scope")));
+
 
         cellDisplayNote.setWrapText(true);
         findField.setPromptText(Strings.get("prompt.find"));
@@ -704,14 +730,31 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // whole text on one line, which is the opposite of wrapping. And the absorbers --
         // imageLabel (centre ellipsis plus a tooltip, by design), the scope combo, the find field
         // -- because giving up width is their job.
+        //
+        // Two joined in 0.2.1, when the header collapsed onto two rows.
+        //
+        // exactCheck, because it moved onto the Find row: it does not wrap, its label is the
+        // whole control, and it is the widest fixed thing in the panel's tightest row --
+        // unprotected, it is the first control an over-subscribed Find row would turn into "...".
+        //
+        // scopeCombo, because it STOPPED being an absorber. It shared the Find row's slack with
+        // the find field until now; on the preset row it would share it with the preset combo,
+        // and the two are not the same kind of control. This one has three fixed short values and
+        // is exactly as readable at its preferred 127px as at 400, so every pixel it absorbed
+        // would come off a user-authored preset name that genuinely can be long. Pinning it also
+        // gives the merged row a computable floor, which is what makes the narrow profile's
+        // stacking decision a measurement rather than a guess.
         keepFullyReadable(helpButton, surfaceButton,
                 presetLabel, presetSaveButton, presetDeleteButton,
-                turnOffExact,
-                scopeLabel, findLabel, clearFindButton);
+                turnOffExact, exactCheck,
+                scopeLabel, scopeCombo, findLabel, clearFindButton);
 
-        VBox header = new VBox(4, imageRow, presetRow, modeBox, cellDisplayNote, exactWarningBox,
-                filterBox);
-        header.setPadding(new Insets(0, 0, 6, 0));
+        // exactWarningBox now sits BELOW filterBox, because since 0.2.1 the checkbox it is
+        // explaining lives in that row. A warning rendered above the control it refers to reads
+        // as being about the radios instead.
+        VBox header = new VBox(GAP, imageRow, presetRow, modeBox, cellDisplayNote, filterBox,
+                exactWarningBox);
+        header.setPadding(new Insets(0, 0, GAP, 0));
         setTop(header);
 
         buildClassTable();
@@ -729,17 +772,47 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         resetButton.setTooltip(new Tooltip(Strings.get("tooltip.button.reset")));
         switchToHideButton.setTooltip(new Tooltip(Strings.get("tooltip.button.switchToHide")));
         statusButtons.setAlignment(Pos.CENTER_LEFT);
-        HBox statusRow = new HBox(6, spinner, statusLabel);
+        HBox statusRow = new HBox(GAP, spinner, statusLabel);
         statusRow.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(statusLabel, Priority.ALWAYS);
         statusBox.getChildren().setAll(statusRow, statusButtons);
-        statusBox.setPadding(new Insets(6, 0, 0, 0));
+        statusBox.setPadding(new Insets(GAP, 0, 0, 0));
 
-        VBox bottom = new VBox(4, rulesPane, statusBox);
+        VBox bottom = new VBox(GAP, rulesPane, statusBox);
         setBottom(bottom);
 
         widthProperty().addListener((obs, oldValue, newValue) -> applyProfile(newValue.doubleValue()));
         applyWideProfile();
+    }
+
+    /**
+     * Assemble one list pane: its header label, its table, and whatever sits under the table.
+     *
+     * <p><b>One factory because there are two of these and they are built by parallel code.</b>
+     * The class list and the component list had their header label, their table's minimum height
+     * and their {@code Vgrow} set independently in two methods, which is how the space above a
+     * header comes to be right in one list and wrong in the other. It was wrong in both: the two
+     * headers sat flush against the control above them, with the class header touching the Find
+     * field in the wide profile and the component header touching the split divider in the narrow
+     * one (user, 2026-09-01).</p>
+     *
+     * <p>The breathing room is {@link #GAP} above the label, on top of whatever the container
+     * above already contributes -- so nothing here has to know which profile it is in or what is
+     * sitting above it.</p>
+     *
+     * @param pane the pane to fill
+     * @param header the list's header label
+     * @param table the list's table
+     * @param footer the controls under the table
+     */
+    private static void buildListPane(VBox pane, Label header, TableView<?> table, Node footer) {
+        header.setPadding(new Insets(GAP, 0, 0, 0));
+        // Wrapping, because both headers are sentences that name the list scope and its counts,
+        // and a docked pane is narrower than either of them.
+        header.setWrapText(true);
+        table.setMinHeight(TABLE_MIN_HEIGHT);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        pane.getChildren().setAll(header, table, footer);
     }
 
     private void buildClassTable() {
@@ -816,8 +889,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         classTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         classTable.setTableMenuButtonVisible(true);
         installHeaderTooltips(classTable);
-        classTable.setMinHeight(120);
-        VBox.setVgrow(classTable, Priority.ALWAYS);
 
         SortedList<ClassRow> sorted = new SortedList<>(filteredClasses);
         classTable.setItems(sorted);
@@ -846,7 +917,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         includeEmptyCheck.setWrapText(true);
         includeEmptyCheck.setTooltip(new Tooltip(Strings.get("tooltip.check.includeEmpty")));
 
-        classPane.getChildren().addAll(classHeader, classTable, includeEmptyCheck);
+        buildListPane(classPane, classHeader, classTable, includeEmptyCheck);
     }
 
     private void buildComponentTable() {
@@ -894,8 +965,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         componentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         componentTable.setTableMenuButtonVisible(true);
         installHeaderTooltips(componentTable);
-        componentTable.setMinHeight(120);
-        VBox.setVgrow(componentTable, Priority.ALWAYS);
 
         SortedList<ComponentRow> sorted = new SortedList<>(filteredComponents);
         sorted.comparatorProperty().bind(componentTable.comparatorProperty());
@@ -916,9 +985,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         allRadio.setTooltip(new Tooltip(Strings.get("tooltip.combination.all")));
         anyRadio.setWrapText(true);
         allRadio.setWrapText(true);
-        combinationBox = new VBox(2, combinationLabel, anyRadio, allRadio);
+        combinationBox = new VBox(CAPTION_GAP, combinationLabel, anyRadio, allRadio);
 
-        componentPane.getChildren().addAll(componentHeader, componentTable, combinationBox);
+        buildListPane(componentPane, componentHeader, componentTable, combinationBox);
     }
 
     private void buildRulesPane() {
@@ -973,14 +1042,14 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         });
 
         clearRulesButton.setTooltip(new Tooltip(Strings.get("tooltip.button.clearAllRules")));
-        HBox rulesTop = new HBox(6, clearRulesButton);
+        HBox rulesTop = new HBox(GAP, clearRulesButton);
         rulesTop.setAlignment(Pos.CENTER_RIGHT);
-        rulesTop.setPadding(new Insets(0, 0, 4, 0));
+        rulesTop.setPadding(new Insets(0, 0, GAP, 0));
         // The routine "N rules active" sentence lives here rather than on the always-visible
         // strip (external tester, 2026-09-01: "put inside drop down"). The everything-hidden
         // warning does NOT -- see updateStatus.
         rulesStatusLabel.setWrapText(true);
-        VBox rulesContent = new VBox(4, rulesStatusLabel, rulesTop, ruleTable);
+        VBox rulesContent = new VBox(GAP, rulesStatusLabel, rulesTop, ruleTable);
 
         rulesPane.setText(Strings.get("rules.none"));
         rulesPane.setContent(rulesContent);
@@ -1143,11 +1212,22 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         splitPane.setDividerPositions(ClassVisibilityPreferences.wideDividerProperty().get());
 
         modeRow.getChildren().setAll(hideRadio, showOnlyRadio);
-        modeBox.getChildren().setAll(modeLabel, modeRow, exactCheck);
+        modeBox.getChildren().setAll(modeLabel, modeRow);
 
+        // Two rows, and the point of the second one is where the slack goes rather than the row
+        // count. "List:" moves up beside the presets (user, 2026-09-01: "that bar is far too long
+        // anyway") -- the preset combo had HGrow.ALWAYS and nothing to its right, so on a wide
+        // panel it stretched into an enormous empty dropdown for no benefit. Measured at an 800px
+        // panel, that combo goes from 458px to 298px and the find field takes what it gave up.
+        //
+        // Nothing on either row can be squeezed below its own text: probes of both rows with the
+        // real strings hold every fixed control at its width down to a 240px panel, and the only
+        // things that ever give are the preset combo and the find field, which is their job.
         scopeRow.getChildren().setAll(scopeLabel, scopeCombo);
-        findRow.getChildren().setAll(findLabel, findField, clearFindButton);
-        filterRow.getChildren().setAll(scopeRow, findRow);
+        presetRow.getChildren().setAll(presetLabel, presetCombo, presetSaveButton,
+                presetDeleteButton, scopeRow);
+        findRow.getChildren().setAll(findLabel, findField, clearFindButton, exactCheck);
+        filterRow.getChildren().setAll(findRow);
         HBox.setHgrow(findRow, Priority.ALWAYS);
         filterBox.getChildren().setAll(filterRow);
     }
@@ -1159,12 +1239,31 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // Stacked, not hidden. Every zone survives the narrow profile; the only concessions are
         // stacking and ellipsis-with-tooltip on long names.
         modeRow.getChildren().clear();
-        modeBox.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, exactCheck);
+        modeBox.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio);
 
+        // Stacked, not on the Find row, and the number is measured rather than guessed. The
+        // checkbox is 152px that never shrinks, so in an HBox the find field pays for all of it:
+        // a probe of this exact row gives the field 98px at a 320px pane and 18px at 240px,
+        // against a 170px preferred. An 18px find field is not a narrower control, it is a gone
+        // one -- and Find is this panel's primary navigation at thirty near-identical class
+        // names, which is why focusFind() exists at all. Below about 390px the row cannot hold
+        // both, and the narrow profile runs to 580px, so it stacks throughout it.
+        //
+        // This costs nothing here: exactCheck had its own line in the narrow profile before the
+        // move too, under the radios. It has simply moved down to sit with the filter controls
+        // and directly above the warning it raises.
+        //
+        // "List:" stays off the preset row here for the same measured reason. That merged row's
+        // floor is 386px -- the four preset controls at their own widths plus the scope combo's
+        // 127px -- and below it the row does not ellipsise, it OVERFLOWS: "List:" and its combo
+        // are pushed past the right edge of the panel and simply are not there. Silently absent
+        // is worse than truncated. The narrow profile runs to 580px, so it stacks throughout.
+        presetRow.getChildren().setAll(presetLabel, presetCombo, presetSaveButton,
+                presetDeleteButton);
         filterRow.getChildren().clear();
         scopeRow.getChildren().setAll(scopeLabel, scopeCombo);
         findRow.getChildren().setAll(findLabel, findField, clearFindButton);
-        filterBox.getChildren().setAll(scopeRow, findRow);
+        filterBox.getChildren().setAll(scopeRow, findRow, exactCheck);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -2025,7 +2124,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             classTable.setPlaceholder(new Label(Strings.get("placeholder.classes.noImage")));
             componentTable.setPlaceholder(new Label(Strings.get("placeholder.components.noImage")));
         } else if (filtered && classRows.size() > 0) {
-            VBox box = new VBox(6);
+            VBox box = new VBox(GAP);
             box.setAlignment(Pos.CENTER);
             Label label = new Label(Strings.format("placeholder.classes.noMatch", findField.getText()));
             label.setWrapText(true);

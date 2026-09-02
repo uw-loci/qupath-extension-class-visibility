@@ -250,18 +250,23 @@ class SourceDisciplineTest {
      * same reason in the other axis.</p>
      */
     private static final List<String> SHRINKABLE_ROWS = List.of(
-            "imageRow", "presetRow", "exactWarningBox", "filterRow", "scopeRow", "findRow",
-            "classButtonRow");
+            "imageRow", "presetRow", "exactWarningBox", "filterRow", "scopeRow", "findRow");
 
     /**
      * The controls that are <b>meant</b> to give up width, and what they do instead of vanishing.
      *
      * <p>{@code imageLabel} truncates with a centre ellipsis and keeps a tooltip with the full
-     * name; {@code exactWarningLabel} wraps; the two combos and the find field are the row's
+     * name; {@code exactWarningLabel} wraps; the preset combo and the find field are their rows'
      * shock absorbers and stay usable at any width because their content is not their label.</p>
+     *
+     * <p>{@code scopeCombo} left this list in 0.2.1. It was an absorber while it shared the Find
+     * row with the find field; on the preset row it would be competing with a combo holding
+     * user-authored names, and three fixed short values gain nothing from extra width. There is
+     * one absorber per row now, and that is the point -- two absorbers on one row means neither
+     * of them is the one the slack was meant for.</p>
      */
     private static final List<String> DELIBERATE_ABSORBERS = List.of(
-            "imageLabel", "exactWarningLabel", "presetCombo", "scopeCombo", "findField");
+            "imageLabel", "exactWarningLabel", "presetCombo", "findField");
 
     /**
      * No control in a shrinkable row may be squeezed below its own text.
@@ -279,6 +284,155 @@ class SourceDisciplineTest {
      * or a declared absorber -- so a control added to one of these rows later cannot quietly
      * inherit the defect.</p>
      */
+    /**
+     * The two header rows' own occupants, named rather than merely counted.
+     *
+     * <p>The generic check above proves that everything in a shrinkable row is either protected
+     * or a declared absorber. That is not quite enough for these two rows since 0.2.1, when the
+     * header collapsed onto them: the cheapest way to make a future over-subscription "pass" is
+     * to add the offending control to {@code DELIBERATE_ABSORBERS}, a one-word edit that
+     * reintroduces the exact defect for a control whose label IS the control. So both rows'
+     * fixed controls are pinned by name to the protected list specifically.</p>
+     *
+     * <p><b>One absorber per row, and only one.</b> Each row has exactly one child with
+     * {@code HGrow.ALWAYS} -- the preset combo, holding user-authored names, and the find field.
+     * Everything else holding its preferred width is what makes the shortfall land on that one
+     * control rather than being spread over the whole row, which is how a row of "..." happens.
+     * A second grower on either row would mean neither of them is the one the slack was meant
+     * for.</p>
+     */
+    @Test
+    void bothHeaderRowsFixedControlsAreAllProtected() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+        Matcher protectedCall = Pattern.compile("keepFullyReadable\\(([^;{]*)\\);").matcher(pane);
+        assertThat(protectedCall.find()).as("keepFullyReadable must be called").isTrue();
+        Set<String> protectedControls = new LinkedHashSet<>(identifiers(protectedCall.group(1)));
+
+        assertThat(protectedControls)
+                .as("every fixed-label control on the Find row")
+                .contains("findLabel", "clearFindButton", "exactCheck");
+        assertThat(protectedControls)
+                .as("every fixed-label control on the preset row, scopeCombo included -- it "
+                        + "stopped being an absorber when it moved onto a row that already had one")
+                .contains("presetLabel", "presetSaveButton", "presetDeleteButton",
+                        "scopeLabel", "scopeCombo");
+        assertThat(DELIBERATE_ABSORBERS)
+                .as("neither may be excused as an absorber: a checkbox and a three-value combo "
+                        + "are their own labels")
+                .doesNotContain("exactCheck", "scopeCombo");
+        // Growers are counted by name rather than in total: there are legitimate ones on other
+        // rows (the image label, the exact-match warning, the status text, and findRow itself
+        // inside filterRow), so a global count would be an assertion about the wrong thing.
+        Set<String> growers = new LinkedHashSet<>();
+        Matcher grower = Pattern.compile("HBox\\.setHgrow\\((\\w+),").matcher(pane);
+        while (grower.find()) {
+            growers.add(grower.group(1));
+        }
+        assertThat(growers)
+                .as("one grower per header row, and it is the one holding unbounded user text")
+                .contains("presetCombo", "findField");
+        assertThat(growers)
+                .as("nothing else on either header row may grow -- a second grower means the "
+                        + "slack is no longer going where it was meant to")
+                .doesNotContain("presetLabel", "presetSaveButton", "presetDeleteButton",
+                        "scopeLabel", "scopeCombo", "scopeRow",
+                        "findLabel", "clearFindButton", "exactCheck");
+    }
+
+    /**
+     * One spacing unit, not six.
+     *
+     * <p>Through 0.2.0 the panel's insets and row gaps were 2, 4, 6, 8 and 12, arrived at one
+     * control at a time -- which is how the two list headers came to sit flush against the bar
+     * above them while other seams had room to spare. Every spacing number is now {@code GAP},
+     * an explicit multiple of it, {@code CAPTION_GAP} for a label sitting on its own control, or
+     * zero; {@code GRAPHIC_GAP} is exempt by name, being inside a table cell rather than in the
+     * panel's vertical rhythm.</p>
+     *
+     * <p>This is a drift guard, not a taste assertion: it does not care what the unit is, only
+     * that a seventh bare number cannot be added without saying so here.</p>
+     */
+    @Test
+    void everySpacingNumberComesFromTheOneUnit() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+        Pattern spacing = Pattern.compile(
+                "new (?:VBox|HBox)\\(\\s*([^,)]+)[,)]|new Insets\\(([^)]*)\\)");
+        Matcher matcher = spacing.matcher(pane);
+        List<String> violations = new ArrayList<>();
+        int seen = 0;
+        while (matcher.find()) {
+            String args = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+            // An explicit multiple of the unit is the unit. Collapse "GAP * 2" to "GAP" before
+            // tokenising, so the multiplier is not read as a bare spacing number of its own.
+            args = args.replaceAll("(GAP|CAPTION_GAP)\\s*\\*\\s*\\d+", "$1")
+                    .replaceAll("\\d+\\s*\\*\\s*(GAP|CAPTION_GAP)", "$1");
+            // "new VBox()" and "new HBox()" take no spacing at all; the first group then captures
+            // a node, which carries no digits and passes for the right reason.
+            seen++;
+            for (String token : args.split("[,*/+\\s]+")) {
+                String t = token.strip();
+                if (t.isEmpty() || t.equals("0") || t.equals("GAP") || t.equals("CAPTION_GAP")
+                        || t.equals("GRAPHIC_GAP") || !t.matches(".*\\d.*")) {
+                    continue;
+                }
+                violations.add(matcher.group() + "  ->  " + t);
+            }
+        }
+        assertThat(seen).as("spacing sites found in the source").isNotZero();
+        assertThat(violations)
+                .as("bare spacing numbers; use GAP, a multiple of it, or CAPTION_GAP")
+                .isEmpty();
+    }
+
+    /**
+     * Both list panes are assembled by the one factory.
+     *
+     * <p>The class list and the component list are built by parallel methods, and the space above
+     * a header label is exactly the kind of thing that gets fixed in one and not the other -- it
+     * was missing from both. Requiring the shared factory keeps the pair honest, and takes the
+     * table's minimum height and its {@code Vgrow} with it.</p>
+     */
+    @Test
+    void bothListPanesGoThroughTheOneFactory() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+        assertThat(pane)
+                .contains("buildListPane(classPane, classHeader, classTable")
+                .contains("buildListPane(componentPane, componentHeader, componentTable");
+        assertThat(methodBody(pane, "private static void buildListPane(VBox pane, Label header,"))
+                .as("the breathing room above a list header is set once, for both lists")
+                .contains("header.setPadding(new Insets(GAP, 0, 0, 0))");
+    }
+
+    /**
+     * Moving "Exact matches only" onto the Find row must not cost the R1 interlock.
+     *
+     * <p>It is QuPath's persistent {@code useExactSelectedClasses} preference, and while it is on
+     * no component rule can match anything -- so the panel greys the entire component list and
+     * says why, in a banner with a {@code Turn off} button. That wiring hangs off the checkbox,
+     * not off the container holding it, and this pins all three legs of it so a later layout move
+     * cannot quietly take the explanation with it.</p>
+     */
+    @Test
+    void theExactMatchesInterlockSurvivesTheLayoutMove() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+        assertThat(pane)
+                .as("the component list goes inert while exact matching is on")
+                .contains("componentPane.setDisable(Boolean.TRUE.equals(newValue))")
+                .as("and again on the initial paint, not only on the next change")
+                .contains("componentPane.setDisable(exactCheck.isSelected())");
+        assertThat(pane)
+                .as("the banner explaining the inert list follows the same checkbox")
+                .contains("exactWarningBox.visibleProperty().bind(exactCheck.selectedProperty())")
+                .contains("exactWarningBox.managedProperty().bind(exactCheck.selectedProperty())");
+        assertThat(pane)
+                .as("QuPath owns the value; the panel must still follow a change made elsewhere")
+                .contains("options.useExactSelectedClassesProperty().addListener(exactListener)");
+    }
+
     @Test
     void noControlInAShrinkableRowCanBeSqueezedBelowItsText() throws IOException {
         String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",

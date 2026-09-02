@@ -207,12 +207,12 @@ Top to bottom, the panel is:
 | Zone | What it is |
 |---|---|
 | `Image:` | The image the rows and counts come from. This is the panel's way of telling you which image it is describing, and it is there in every layout. At the right of the same row: a **`?`** button with a short summary of the panel and what to do if the viewer goes blank, and the `Dock as tab` / `Undock to window` button. |
-| `Preset:` | A combo of the views saved in this project, with `Save` and `Delete`. Choosing one applies it immediately. Empty, and disabled apart from the combo, when no project is open. See [Presets: a view you named](#presets-a-view-you-named). |
+| `Preset:` | A combo of the views saved in this project, with `Save` and `Delete`. Choosing one applies it immediately. Empty, and disabled apart from the combo, when no project is open. See [Presets: a view you named](#presets-a-view-you-named). **On a wide panel `List:` shares this row**, at its right-hand end. |
 | `Visibility rule:` | Two radio buttons, `Hide checked classes` and `Show only checked classes`. The panel opens on the second one -- see [Opening the panel hides everything](#opening-the-panel-hides-everything) and [below](#hide-checked-classes-vs-show-only-checked-classes). |
-| `Exact matches only` | A QuPath-wide setting. While it is on, the whole component half of the panel is greyed out. See [below](#one-qupath-setting-can-switch-the-component-list-off). |
-| `Cell visibility is also affected by Cell display settings -- see QuPath's View menu.` | A line of text under the visibility rule, and a pointer rather than a control. Cell display is QuPath's own setting and has nothing to do with classes, but it can make cells look wrong in a way that is easily blamed on this panel -- see [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn). |
-| `List:` | Which objects are counted and listed -- `Detections`, `Cells`, `Annotations` or `All objects`. It chooses what you *see in this panel*, never what gets hidden. See [the next section](#list-chooses-what-you-see-here-not-what-gets-hidden). |
-| `Find:` | One filter field over both lists. Case-insensitive, matches anywhere in the name, and the matched text is shown in **bold** in the rows that survive. |
+| `See QuPath's View -> Cell Display menu` | A line of text, and a pointer rather than a control -- it names a menu and stops there. **Cell display is QuPath's own setting and has nothing to do with classes**, but it can make cells look wrong in a way that is easily blamed on this panel, which is the only reason a line about it appears here at all. See [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn). |
+| `List:` | Which objects are counted and listed -- `Detections`, `Cells`, `Annotations` or `All objects`. It chooses what you *see in this panel*, never what gets hidden. See [the next section](#list-chooses-what-you-see-here-not-what-gets-hidden). On a wide panel it sits at the end of the `Preset:` row; on a narrow one it has a line of its own, above `Find:`. |
+| `Find:` | One filter field over both lists. Case-insensitive, matches anywhere in the name, and the matched text is shown in **bold** in the rows that survive. **On a wide panel `Exact matches only` shares this row**, at its right-hand end. |
+| `Exact matches only` | A QuPath-wide setting. While it is on, the whole component half of the panel is greyed out. See [below](#one-qupath-setting-can-switch-the-component-list-off). At the end of the `Find:` row on a wide panel; on its own line below `Find:` on a narrow one. |
 | Classes list | Headed `Classes on detections in this image (28)`. One row per class present in the image, with a checkbox, a **colour swatch** and the name, then an **`Affects`** -- how many objects a click on the row would actually hide or show. Sorted by `Affects` descending by default. A **`Count`** column, objects carrying exactly this class, is off by default and one click away in the column menu button; the two are different numbers and the gap is the point -- see [What a checked class row acts on](#what-a-checked-class-row-acts-on). The **checkbox column's header holds a check box of its own**, which checks or unchecks everything currently listed. |
 | Components list | Headed `Anything containing these components (17)`, which is what checking a row does. One row per component, with a checkbox, the name and a `Count`. Sorted by name, alphabetically, by default. A **`Spread`** column is off by default, in the same column menu button -- see [The `Spread` column](#the-spread-column-how-many-classes-a-component-covers). |
 | `Checked components combine as:` | The `Any` / `All` radios. Only meaningful from two checked components onward. |
@@ -345,14 +345,19 @@ the analysis pane and it reappears.
 There is one panel, and it lays itself out two ways depending on how much width it has:
 
 - **Wide** (roughly 640 px and up, which is the usual floating size): the two lists sit side
-  by side, classes on the left and components on the right, with a divider you can drag.
+  by side, classes on the left and components on the right, with a divider you can drag. The
+  header pairs its controls two to a row -- `Preset:` with its combo, `Save`, `Delete` and
+  then `List:`; `Find:` with its field, the clear button and then `Exact matches only`.
 - **Narrow** (roughly 580 px and below, which is the usual docked width): the two lists
-  stack vertically, classes above components, again with a draggable divider. The mode radios
-  stack, the cell-display note wraps onto more lines, and the classes header shortens --
-  `Classes on detections (3 of 28)` rather than
-  `Classes on detections in this image (3 of 28)`. Nothing is lost: the panel's whole subject
-  is the current image, and the `Image:` label one line above says which. The components
-  header, `Anything containing these components (2 of 17)`, is the same in both layouts.
+  stack vertically, classes above components, again with a draggable divider. **The header
+  stacks rather than compressing**: the mode radios go one above the other, and `List:`,
+  `Find:` and `Exact matches only` each take a line of their own. Nothing is dropped -- the
+  panel would sooner be taller than push a control off its right-hand edge. The classes
+  header shortens -- `Classes on detections (3 of 28)` rather than
+  `Classes on detections in this image (3 of 28)`. Nothing is lost there either: the panel's
+  whole subject is the current image, and the `Image:` label one line above says which. The
+  components header, `Anything containing these components (2 of 17)`, is the same in both
+  layouts.
 
 The two thresholds differ on purpose, so the layout does not flicker back and forth while
 you drag a window edge or the analysis pane's divider through the switch point.
@@ -530,7 +535,7 @@ Two things about the denominator, because both can shift a ratio:
 
 - It is the number of classes **carried by objects in this image** -- by default, the same
   number the classes list header shows. It does **not** grow when you turn on
-  `Include classes with no objects here`: a class no object carries is reach a component
+  `Include classes not in this image`: a class no object carries is reach a component
   cannot have, and counting it would make every component look less widespread than it is.
   (So with that option on, the header count is the larger of the two, and the ratios stay put.)
 - **`Unclassified` is one of the classes it counts**, whenever the image has unclassified
@@ -608,9 +613,19 @@ was created. The panel folds both into this one row, so the count you see is the
 ### Zero-count classes
 
 By default the classes list shows only classes carried by objects in the current image.
-Check **`Include classes with no objects here`** to add the rest of your project's available
-classes as well. They show a `Count` of zero, render muted, and sort to the bottom -- present
-and absent are never interleaved.
+Check **`Include classes not in this image`** to add the rest of the classes QuPath currently
+knows about as well. They show a `Count` of zero, render muted, and sort to the bottom --
+present and absent are never interleaved.
+
+**Where those extra classes come from is worth knowing, because it is not only your project.**
+They are QuPath's list of available classes -- the one in the **Annotations** tab -- and
+QuPath keeps that list in two places at once. With a project open it belongs to the project:
+opening a project that has its own saved classes replaces the list with them, and every edit
+you make is written straight back into the project file. But QuPath *also* saves the list into
+your user preferences when it quits and loads it from there at startup, so with no project
+open you get whatever the list held last, and **a brand-new project starts out inheriting it**
+rather than empty. Classes can therefore follow you from one project into the next, which is
+usually convenient and occasionally surprising.
 
 **A zero `Count` does not mean the row does nothing.** Its `Affects` can be large: no object
 carries `CD3: CD8` in this image, but a rule for it still reaches `CD3: CD8: PD1` and every
@@ -624,23 +639,25 @@ rows stop jumping around as you flip between images. It is off by default becaus
 classes the question is usually "what is in front of me", and padding that with 40 absent
 classes answers a different one.
 
-The panel **reads** your project's class list and never writes to it. QuPath's own
-"Populate from image" action does write to it; this panel deliberately has no equivalent.
+The panel **reads** that class list and never writes to it -- neither into the project nor
+into your preferences. QuPath's own "Populate from image" action does write to it; this panel
+deliberately has no equivalent.
 
 ### One QuPath setting can switch the component list off
 
-**`Exact matches only`**, the checkbox under the mode radios, is bound to QuPath's own
-setting **"Show/hide exact class matches only"** -- the one under the **More options** button
-at the top of the class list in the Annotations tab. It is a saved preference, so it can be
+**`Exact matches only`**, the checkbox at the end of the `Find:` row -- or on its own line
+below it, on a narrow panel -- is bound to QuPath's own setting
+**"Show/hide exact class matches only"**, the one under the **More options** button at the
+top of the class list in the Annotations tab. It is a saved preference, so it can be
 on from a session weeks ago.
 
 While it is on, only whole-class matches count, and **component rules cannot match anything**.
 The panel does not let you find that out by trial and error:
 
 - the whole component half of the panel is greyed out and cannot be clicked;
-- a warning strip appears -- `[!] "Exact matches only" is on. Component rules match only a
-  class with exactly that name, so they will not find derived classes.` -- with a
-  **`Turn off`** button;
+- a warning strip appears directly under the checkbox itself -- `[!] "Exact matches only" is
+  on. Component rules match only a class with exactly that name, so they will not find
+  derived classes.` -- with a **`Turn off`** button;
 - any component rule already in force is listed in `Active rules` with the status
   `Limited by "Exact matches only"`.
 
@@ -774,8 +791,8 @@ uncheck in one list quietly destroying a rule you built in the other.
 ### One thing to expect in QuPath's Annotations pane
 
 In `All` mode the panel expresses your choice to QuPath as a single combined class --
-`CD3: CD8` for the example above. That combination usually does not exist in your project's
-list of available classes, so QuPath's own class list has no row to highlight and will look
+`CD3: CD8` for the example above. That combination usually does not exist in QuPath's list
+of available classes, so QuPath's own class list has no row to highlight and will look
 as though nothing is selected, even while objects are being hidden.
 
 This is expected. The panel's `Active rules` expander lists the rule and, in its `Status`
@@ -873,15 +890,22 @@ nothing of ours got to run.
 
 **This is QuPath's setting, not the panel's.** It lives in QuPath's **`View > Cell display`**
 menu and has four options: `Cell boundaries only`, `Nuclei only`, `Nuclei & cell boundaries`,
-`Cell centroids only`. The panel carries one line of text pointing at it --
-`Cell visibility is also affected by Cell display settings -- see QuPath's View menu.` -- and
-nothing more.
+`Cell centroids only`.
+
+The panel carries one line of text pointing at it -- `See QuPath's View -> Cell Display menu`
+-- and nothing more. **That line is there because of one specific confusion**, and it says so
+nowhere on screen, so it is worth stating here: if your cells have gone or look wrong, the
+cause is at least as often the cell display mode as it is a class rule, and this is the panel
+you were looking at when you noticed. `Cell centroids only` in particular turns every cell
+into a dot, which reads as "my cells are missing" to anyone who did not set it. A user who
+does not know the setting exists has no way to go looking for it, so the panel names the menu
+and leaves the rest to QuPath.
 
 The panel used to carry a second copy of that combo, and it was dropped in 0.2.0: it was the
 one control in the panel with nothing to do with classes, and the panel it sat in was too
-busy. The pointer stays because "I cannot see my cells" is answered by `Cell centroids only`
-at least as often as by a class rule, and a user who does not know the setting exists has no
-way to go looking for it.
+busy. The pointer that replaced it at least stated the connection -- that cell visibility is
+affected by the cell display setting -- but in 0.2.1 it was cut back to the menu name alone,
+which is why the connection has to be made here instead.
 
 Two things to know before you reach for it:
 
@@ -1185,9 +1209,9 @@ click will do *and* how many class rules are currently in force -- see
 
 ## Presets: a view you named
 
-A **preset** is a visibility setup you saved under a name, into the open project. `Preset:` is
-the first row of the panel's header: a combo listing what is saved, with `Save` and `Delete`
-beside it.
+A **preset** is a visibility setup you saved under a name, into the open project. `Preset:`
+starts the second row of the panel's header, under `Image:`: a combo listing what is saved,
+with `Save` and `Delete` beside it. On a wide panel `List:` shares the rest of that row.
 
 ### Saving one
 
@@ -1470,7 +1494,7 @@ would cheerfully report `0 rules active` while objects were being hidden -- whic
 exact failure this panel exists to prevent.
 
 If you would rather the rows stayed put as you flip between images, turn on
-**`Include classes with no objects here`**.
+**`Include classes not in this image`**.
 
 **Presets follow the project, not the image.** The same list is offered on every image in the
 project, and applying one on a different image applies the same rules -- which is the point,
@@ -1494,7 +1518,7 @@ The panel changes **what you see**. It never changes **what you have**.
 Specifically, nothing in this panel will:
 
 - change any object's class;
-- add to, remove from, or reorder your project's list of available classes;
+- add to, remove from, or reorder QuPath's list of available classes;
 - delete, merge, or move objects;
 - modify measurements or any other object data.
 
@@ -1509,10 +1533,11 @@ Two consequences worth knowing:
   image without saving -- your classifications are untouched, because they were never
   touched. (Presets are the exception in the other direction: they are saved the moment you
   click `Save`, and they stay saved.)
-- **The class list is read-only with respect to your project.** QuPath's own Annotations pane
-  has a "Populate from image" action that *adds* every class found in the image to your
-  project's available classes. This panel deliberately does not do that. It shows you what is
-  in the image without changing what your project knows about.
+- **The class list is read-only.** QuPath's own Annotations pane has a "Populate from image"
+  action that *adds* every class found in the image to QuPath's available classes -- which,
+  with a project open, means writing them into the project file. This panel deliberately does
+  not do that. It shows you what is in the image without changing what QuPath, or your
+  project, knows about.
 
 If you are coming from the tabbed variant of the old Groovy script: that version had a
 **"Reset classifications"** button sitting a few pixels below the visibility checkboxes,
@@ -1554,10 +1579,10 @@ One indicator it cannot give you:
 
 - **QuPath's own class list marks hidden classes** with an eye-slash icon and italic text in
   the Annotations tab, and that is the out-of-panel indicator to use -- **but it can only
-  mark a class that is in your project's list of available classes.** A class that exists on
+  mark a class that is in QuPath's list of available classes.** A class that exists on
   your objects and not in that list has no row to carry the mark. On a classifier's output in
   a project where nobody ran "Populate from image", that is the common case rather than the
-  edge case. This panel deliberately does not add classes to the project's list to fix it;
+  edge case. This panel deliberately does not add classes to that list to fix it;
   writing into your class list to improve a status icon is a worse trade.
 
 There is also a notification, `The panel is closed, but 3 class rules are still in force.
@@ -1635,7 +1660,7 @@ difference decides what comes back after a restart.
 | `List` scope | the panel | yes | the panel |
 | Divider position between the two lists | the panel | yes | separately for the wide and narrow layouts |
 | `Active rules` expanded or collapsed | the panel | yes | the panel |
-| `Include classes with no objects here` | the panel | yes | the panel |
+| `Include classes not in this image` | the panel | yes | the panel |
 | Sort column and direction, per list | the panel | **no** | survives docking and undocking within a session, but not a restart |
 | `Find` text | -- | **no**, deliberately | -- |
 | The panel window's position and size | the panel | **yes** | one window, whichever image or project |
@@ -1729,15 +1754,15 @@ It did, in the old script -- that was a substring match, and it was a bug. QuPat
 whole names now. See [Coming from the script](migration-from-the-script.md).
 
 **QuPath's Annotations pane shows nothing selected but objects are hidden.**
-You are in `All` mode, and the combined class is not in your project's class list, so there
-is no row for QuPath to highlight. Expected -- see
+You are in `All` mode, and the combined class is not in QuPath's list of available classes,
+so there is no row for QuPath to highlight. Expected -- see
 [One thing to expect in QuPath's Annotations pane](#one-thing-to-expect-in-qupaths-annotations-pane).
 The panel's `Active rules` expander shows it, and `Reset all` clears it.
 
 **A class I checked has vanished from the list.**
 It is absent from the current image. The rule is still in force. See
 [Working across several images](#working-across-several-images), or turn on
-`Include classes with no objects here`.
+`Include classes not in this image`.
 
 **I changed `List` to `Annotations` but my detections are still hidden.**
 `List` chooses what is counted and listed. It never limits what is hidden -- one global,

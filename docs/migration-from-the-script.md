@@ -44,9 +44,9 @@ combinatorial classes:
   contains it;
 - **combining several components with `All`** -- "only the cells that are CD3 *and* CD4" --
   which no interface in QuPath currently exposes, although the underlying engine supports it;
-- the classes **actually present in the current image, with counts**, rather than the
-  project's list of available classes. (The only built-in way to reconcile the two is
-  "Populate from image", which *changes* your project's class list. This panel never does.)
+- the classes **actually present in the current image, with counts**, rather than QuPath's
+  list of available classes. (The only built-in way to reconcile the two is
+  "Populate from image", which *changes* that list. This panel never does.)
 - a `Find` field that filters the **component** list, which the built-in pane has no
   equivalent of. Over class names its own filter is the better one -- it accepts regular
   expressions and this panel's does not.

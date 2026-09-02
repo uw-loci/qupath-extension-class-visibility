@@ -4,6 +4,70 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.2.1
+
+**Two labels and a header row.** No behaviour changed: every rule, preset and count works
+exactly as it did in 0.2.0, and there is nothing to redo on upgrade.
+
+### A label that leaned on "here", and a tooltip that was wrong about where your classes live
+
+`Include classes with no objects here` is now **`Include classes not in this image`**. The old
+label put a lot of weight on "here", which could as easily have meant this list, this panel or
+this project.
+
+Its tooltip is a **correction, not a rewording**. It used to describe the extra rows as *the
+project's classes*, and that is not what QuPath keeps. Those rows come from QuPath's list of
+available classes -- the one in the **Annotations** tab -- and QuPath holds that list in two
+places at once: it belongs to the open project, which it is written back into on every edit,
+**and** it is saved into your user preferences on quit and reloaded at startup. So with no
+project open you get whatever the list held last, and a brand-new project starts out
+inheriting it rather than empty. A user who read the old tooltip and concluded the list was
+sealed inside one project would be surprised the first time their classes turned up somewhere
+else.
+
+The user guide repeated the same assumption wherever it named that list -- *your project's
+available classes*, *your project's class list*, *what your project knows about*. Every one of
+them now says QuPath's list of available classes instead, with the two-places story told once,
+under [Zero-count classes](docs/user-guide.md#zero-count-classes).
+
+### The cell-display pointer is shorter
+
+The line under the visibility rule now reads **`See QuPath's View -> Cell Display menu`**, in
+place of a sentence explaining why you might want it. It is a bare pointer now, so the reason
+it is there at all moved into the guide, under
+[`Cell display`: how cells are drawn](docs/user-guide.md#cell-display-how-cells-are-drawn):
+"I cannot see my cells" is answered by `Cell centroids only` at least as often as by a class
+rule, and nobody goes looking for a setting they do not know exists.
+
+### The header pairs its controls up
+
+On a **wide** panel the header controls now sit two to a row: `Preset:` with its combo, `Save`,
+`Delete` and then `List:`; `Find:` with its field, the clear button and then
+`Exact matches only`. That is one row back, and -- more to the point -- the preset combo stops
+stretching into the right-hand edge of the panel and the width it gives up goes to the find
+field, which is what you actually type into on an image with thirty near-identical class names.
+
+On a **narrow** panel, which is what you get docked into the analysis pane, the header
+**stacks** instead: `List:`, `Find:` and `Exact matches only` each keep a line of their own.
+The merged rows need more width than the docked pane usually has, and below that width they do
+not shrink politely -- the controls at the right-hand end are pushed off the edge and are
+simply not there. Silently absent is worse than narrow, so the narrow profile does not attempt
+it. **The row count in the docked panel is therefore unchanged from 0.2.0**; this round buys
+back a row in the floating window only. One thing did move there: `Exact matches only` used to
+sit under the two visibility-rule radios and now sits below `Find:`, with the warning it raises
+directly beneath it.
+
+The widths behind that decision come from JavaFX probes of the two rows built with the real
+strings, not from the panel running inside QuPath.
+
+### Room above the list headers
+
+Both list headers -- `Classes on detections in this image (28)` and
+`Anything containing these components (17)` -- were flush against whatever sat above them: the
+`Find` field on a wide panel, the split divider on a narrow one. Both now have a clear line's
+worth of space, set once in the code that builds both lists rather than twice in two places
+that could drift apart.
+
 ## 0.2.0
 
 **Two bug fixes and a simplification pass.** The bugs are first because one of them changed
@@ -83,7 +147,7 @@ the toolbar button's tooltip -- all read it, so they cannot drift apart again.
 
 Found while sweeping for more of the same, not reported. With
 `Include classes with no objects here` ticked, `Classes on detections in this image (28)`
-included the project's classes **this image does not use** -- so the header asserted "in this
+included QuPath's available classes **this image does not use** -- so the header asserted "in this
 image" over rows that by definition failed it, and disagreed with the spread denominator in
 the component list right beside it. Both numbers in that header now count present rows only.
 The unused rows are still listed, still sort last, and still show a count of zero.

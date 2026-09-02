@@ -3,7 +3,7 @@
 Show or hide QuPath objects by class, or by one component of a class name, from a floating
 panel you can dock into QuPath's analysis pane.
 
-A QuPath 0.7 extension, version 0.2.0. It is a port of the community Groovy script
+A QuPath 0.7 extension, version 0.2.1. It is a port of the community Groovy script
 *"Show specific classes of objects v3"* ([image.sc topic 31828](https://forum.image.sc/t/31828)),
 which stopped working when `OverlayOptions.hiddenClassesProperty()` was removed.
 
@@ -75,8 +75,9 @@ the next image. Below that point a second window is not worth the screen space.
 
 ## What it never does
 
-Nothing in this panel changes a classification, the project's class list, or any object
-data. It is a viewer for visibility state, and there is no "reset classifications" button.
+Nothing in this panel changes a classification, QuPath's list of available classes, or any
+object data. It is a viewer for visibility state, and there is no "reset classifications"
+button.
 
 A unit test fails the build if a call such as `setPathClass(` or
 `resetDetectionClassifications(` appears anywhere in the source. That is a guard against the

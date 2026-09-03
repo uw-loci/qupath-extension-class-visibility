@@ -252,8 +252,19 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /**
      * A pointer, not a control. The {@code Cell display} combo that used to sit here was the one
      * thing in the panel with nothing to do with classes, and it duplicated QuPath's own
-     * {@code View -> Cell display}; this line is what remains of it, so a user whose cells look
-     * wrong still knows where to go.
+     * {@code View -> Cell Display}; this is what remains of it, so a user whose cells look wrong
+     * still knows where to go.
+     *
+     * <p><b>It rides the visibility-rule row, and it truncates rather than wraps.</b> It had a
+     * line of its own until 0.2.2, and the user pointed at the empty space beside the two radios
+     * and said it did not need one. What it is explaining -- that the standard cell view is
+     * semi-transparent while <i>Cell boundaries only</i> is opaque -- is 1,202px of text, so the
+     * whole of it can never sit on a row; the visible pointer is the part that fits, and the
+     * sentence is on hover.</p>
+     *
+     * <p>Which is why this is the {@code imageLabel} pattern -- ellipsis plus a tooltip -- and
+     * not a wrapping label. A wrapping label in a docked pane wraps to two lines, which would
+     * hand back the line the move just saved, and then some.</p>
      */
     private final Label cellDisplayNote = new Label(Strings.get("note.cellDisplay"));
     /**
@@ -275,7 +286,17 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** The always-visible strip. Out of the layout entirely when it has nothing to say. */
     private final VBox statusBox = new VBox(GAP);
     private final VBox modeBox = new VBox(CAPTION_GAP);
-    private final HBox modeRow = new HBox(GAP * 2);
+    /**
+     * The visibility-rule row. One {@link #GAP} between its children since 0.2.2, not two.
+     *
+     * <p>The doubled gap was there to hold two mutually-exclusive radios apart while they were
+     * alone on the row. They no longer are, and the 12px it was spending bought the cell-display
+     * note a {@code +2px} margin at the 640px wide threshold -- measured, and thin enough that
+     * QuPath's own theme CSS could close it and truncate the pointer at exactly the width the
+     * wide profile begins. At one GAP the margin is {@code +14px}, and the row's spacing matches
+     * every other row in the header, which is the rule this panel already follows.</p>
+     */
+    private final HBox modeRow = new HBox(GAP);
     private final VBox filterBox = new VBox(GAP);
     private final HBox filterRow = new HBox(GAP);
     private final SplitPane splitPane = new SplitPane();
@@ -707,7 +728,24 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         scopeCombo.setTooltip(new Tooltip(Strings.get("tooltip.scope")));
 
 
-        cellDisplayNote.setWrapText(true);
+        // Trailing ellipsis, not wrapping: this label may give up width, and the way it gives it
+        // up must never be by growing taller. The full sentence is on the tooltip either way, so
+        // a truncated pointer loses nothing that was not already one hover away.
+        cellDisplayNote.setTextOverrun(javafx.scene.control.OverrunStyle.ELLIPSIS);
+        cellDisplayNote.setMaxWidth(Double.MAX_VALUE);
+        Tooltip cellDisplayTooltip = new Tooltip(Strings.get("tooltip.cellDisplay"));
+        cellDisplayTooltip.setWrapText(true);
+        cellDisplayTooltip.setMaxWidth(360);
+        cellDisplayNote.setTooltip(cellDisplayTooltip);
+        cellDisplayNote.setAccessibleText(Strings.get("tooltip.cellDisplay"));
+        HBox.setHgrow(cellDisplayNote, Priority.ALWAYS);
+        // Only takes effect in the narrow profile, where this note is stacked inside modeBox
+        // among the radios; a VBox margin is ignored while it is a child of the HBox in the wide
+        // one. modeBox is spaced at CAPTION_GAP because a caption belongs against the control it
+        // names -- but this note is not part of the radio group, and inheriting the caption's
+        // 2px would sit it against a control it has nothing to do with. This tops it back up to
+        // the panel's ordinary GAP.
+        VBox.setMargin(cellDisplayNote, new Insets(GAP - CAPTION_GAP, 0, 0, 0));
         findField.setPromptText(Strings.get("prompt.find"));
         findField.setTooltip(new Tooltip(Strings.get("tooltip.find")));
         HBox.setHgrow(findField, Priority.ALWAYS);
@@ -731,6 +769,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // imageLabel (centre ellipsis plus a tooltip, by design), the scope combo, the find field
         // -- because giving up width is their job.
         //
+        // Two more joined in 0.2.2, when the cell-display note moved onto the visibility-rule
+        // row. hideRadio and showOnlyRadio do not wrap -- only the Any / All pair does -- and
+        // their labels are the whole control, so they belong here the moment that row acquired
+        // something that can take width off them.
+        //
         // Two joined in 0.2.1, when the header collapsed onto two rows.
         //
         // exactCheck, because it moved onto the Find row: it does not wrap, its label is the
@@ -747,13 +790,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         keepFullyReadable(helpButton, surfaceButton,
                 presetLabel, presetSaveButton, presetDeleteButton,
                 turnOffExact, exactCheck,
+                modeLabel, hideRadio, showOnlyRadio,
                 scopeLabel, scopeCombo, findLabel, clearFindButton);
 
         // exactWarningBox now sits BELOW filterBox, because since 0.2.1 the checkbox it is
         // explaining lives in that row. A warning rendered above the control it refers to reads
         // as being about the radios instead.
-        VBox header = new VBox(GAP, imageRow, presetRow, modeBox, cellDisplayNote, filterBox,
-                exactWarningBox);
+        VBox header = new VBox(GAP, imageRow, presetRow, modeBox, filterBox, exactWarningBox);
         header.setPadding(new Insets(0, 0, GAP, 0));
         setTop(header);
 
@@ -1211,7 +1254,12 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         splitPane.setOrientation(Orientation.HORIZONTAL);
         splitPane.setDividerPositions(ClassVisibilityPreferences.wideDividerProperty().get());
 
-        modeRow.getChildren().setAll(hideRadio, showOnlyRadio);
+        // The note goes exactly where the user pointed: the empty space to the right of the two
+        // radios (2026-09-03). "Visibility rule:" stays above them rather than joining the row --
+        // inlining it would save another line, but it costs the note 100px of the 239px it has at
+        // the wide threshold, and the half of the pointer that gets cut first is the actionable
+        // half, the one naming the menu to go to.
+        modeRow.getChildren().setAll(hideRadio, showOnlyRadio, cellDisplayNote);
         modeBox.getChildren().setAll(modeLabel, modeRow);
 
         // Two rows, and the point of the second one is where the slack goes rather than the row
@@ -1238,8 +1286,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
         // Stacked, not hidden. Every zone survives the narrow profile; the only concessions are
         // stacking and ellipsis-with-tooltip on long names.
+        // Its own line here, because the radios are already stacked and there is no space beside
+        // them to move into. This is still a saving rather than the status quo: the note used to
+        // WRAP at this width, so the line it took was routinely two.
         modeRow.getChildren().clear();
-        modeBox.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio);
+        modeBox.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, cellDisplayNote);
 
         // Stacked, not on the Find row, and the number is measured rather than guessed. The
         // checkbox is 152px that never shrinks, so in an HBox the find field pays for all of it:

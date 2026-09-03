@@ -250,7 +250,8 @@ class SourceDisciplineTest {
      * same reason in the other axis.</p>
      */
     private static final List<String> SHRINKABLE_ROWS = List.of(
-            "imageRow", "presetRow", "exactWarningBox", "filterRow", "scopeRow", "findRow");
+            "imageRow", "presetRow", "exactWarningBox", "filterRow", "scopeRow", "findRow",
+            "modeRow");
 
     /**
      * The controls that are <b>meant</b> to give up width, and what they do instead of vanishing.
@@ -264,9 +265,15 @@ class SourceDisciplineTest {
      * user-authored names, and three fixed short values gain nothing from extra width. There is
      * one absorber per row now, and that is the point -- two absorbers on one row means neither
      * of them is the one the slack was meant for.</p>
+     *
+     * <p>{@code cellDisplayNote} joined it in 0.2.2 as the visibility-rule row's absorber. It is
+     * the {@code imageLabel} kind rather than the {@code exactWarningLabel} kind: it truncates
+     * with an ellipsis and keeps the full sentence on a tooltip, and it must NOT wrap. Wrapping
+     * is how a label gives up width by growing taller, which on this row would hand back the
+     * line the note was moved to save -- see {@link #theCellDisplayNoteTruncatesRatherThanWraps}.</p>
      */
     private static final List<String> DELIBERATE_ABSORBERS = List.of(
-            "imageLabel", "exactWarningLabel", "presetCombo", "findField");
+            "imageLabel", "exactWarningLabel", "presetCombo", "findField", "cellDisplayNote");
 
     /**
      * No control in a shrinkable row may be squeezed below its own text.
@@ -332,12 +339,53 @@ class SourceDisciplineTest {
         assertThat(growers)
                 .as("one grower per header row, and it is the one holding unbounded user text")
                 .contains("presetCombo", "findField");
+        assertThat(protectedControls)
+                .as("every fixed-label control on the visibility-rule row, which acquired an "
+                        + "occupant that can take width off the radios in 0.2.2")
+                .contains("modeLabel", "hideRadio", "showOnlyRadio");
         assertThat(growers)
-                .as("nothing else on either header row may grow -- a second grower means the "
+                .as("nothing else on any header row may grow -- a second grower means the "
                         + "slack is no longer going where it was meant to")
                 .doesNotContain("presetLabel", "presetSaveButton", "presetDeleteButton",
                         "scopeLabel", "scopeCombo", "scopeRow",
-                        "findLabel", "clearFindButton", "exactCheck");
+                        "findLabel", "clearFindButton", "exactCheck",
+                        "modeLabel", "hideRadio", "showOnlyRadio");
+        assertThat(growers)
+                .as("the visibility-rule row's own absorber is the note")
+                .contains("cellDisplayNote");
+    }
+
+    /**
+     * The cell-display note gives up width sideways, never downwards.
+     *
+     * <p>It sits on the visibility-rule row since 0.2.2, in the space the user pointed at beside
+     * the two radios. What it explains is 1,202px of text, so it can never be shown in full on a
+     * row at any width -- the visible pointer is a compressed one and the sentence is on hover.
+     * That makes it an absorber, and the KIND of absorber is the whole point: a wrapping label
+     * absorbs width by growing taller, which in a docked pane means two lines, which is more
+     * vertical space than it occupied before it was moved. The move would undo itself.</p>
+     *
+     * <p>So this is the one label in the panel that is explicitly required not to wrap, and
+     * required to carry a tooltip -- a truncated pointer with nothing behind it would be a
+     * control that has quietly stopped saying anything.</p>
+     */
+    @Test
+    void theCellDisplayNoteTruncatesRatherThanWraps() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+        assertThat(pane)
+                .as("wrapping would trade the saved line for two")
+                .doesNotContain("cellDisplayNote.setWrapText(true)");
+        assertThat(pane)
+                .as("it truncates instead, like the image label")
+                .contains("cellDisplayNote.setTextOverrun(javafx.scene.control.OverrunStyle.ELLIPSIS)");
+        assertThat(pane)
+                .as("and what truncation hides has to still be reachable")
+                .contains("cellDisplayNote.setTooltip(")
+                .contains("cellDisplayNote.setAccessibleText(");
+        assertThat(pane)
+                .as("it rides the radio row in the wide profile, which is what the user asked for")
+                .contains("modeRow.getChildren().setAll(hideRadio, showOnlyRadio, cellDisplayNote)");
     }
 
     /**

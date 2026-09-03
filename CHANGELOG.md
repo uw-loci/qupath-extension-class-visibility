@@ -4,6 +4,57 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.2.2
+
+**Layout and wording.** Nothing about what the panel does changed: every rule, preset and
+count behaves exactly as it did in 0.2.1.
+
+### The header is down to three rows
+
+`Visibility rule:` no longer holds a line to itself -- it now sits on the same row as its two
+radio buttons, and the cell-display note has moved onto the end of that row as well. On a
+**wide** panel the header is now three rows -- `Preset:` with its combo and `List:`;
+`Visibility rule:` with its radios and the note; `Find:` with `Exact matches only`. 0.2.1
+took one line off that header and this takes two more.
+
+When that row runs short of width, the label and both radios keep their full text and the
+note is the only thing that shortens. A radio reading `Hide checked cla...` is not something
+you can act on; a note cut to `Dense cells? Try...` still asks the question that earns a
+hover.
+
+On a **narrow** panel -- the docked pane -- nothing moved. The radios are already stacked
+there, so there is no row of controls for the label to join, and the note keeps a full-width
+line of its own below them.
+
+### The cell-display note says what to try
+
+It now reads **`Dense cells? Try View -> Cell Display`**, in place of `See QuPath's View ->
+Cell Display menu`. The old line stated where something was; this one names the condition you
+are probably in and points at the fix.
+
+**The hover carries the substance**, which it lost when the `Cell display` combo went in
+0.2.0: dense cells are usually easier to read drawn as outlines, so try
+`Cell boundaries only`; transparency changes between views, with the standard
+`Nuclei & cell boundaries` semi-transparent and `Cell boundaries only` completely opaque; both
+are in QuPath's `View > Cell display` menu; it applies everywhere in QuPath rather than only
+to the classes checked here; and it changes nothing about which objects are hidden.
+
+Of the two halves that will not fit on one line -- **where** to go and **which** option to
+pick -- the visible text keeps where. A menu path cannot be guessed, while an option cannot be
+missed once the menu is open. The guide says the same at more length, under
+[`Cell display`: how cells are drawn](docs/user-guide.md#cell-display-how-cells-are-drawn).
+
+### A space before the list headers, not above them
+
+Both list headers and both list footers -- `Include classes not in this image` under the
+classes, and the `Checked components combine as:` group under the components -- were sitting
+flush against the left border of their tables. They now have a leading space, from the same
+padding constant as the rest of the panel. The status line inside the `Active rules` expander
+had the same problem and is fixed with it.
+
+0.2.1's "Room above the list headers" was the same report, read as a vertical one. The space
+that was asked for was horizontal.
+
 ## 0.2.1
 
 **Two labels and a header row.** No behaviour changed: every rule, preset and count works

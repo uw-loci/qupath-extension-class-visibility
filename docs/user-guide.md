@@ -208,8 +208,8 @@ Top to bottom, the panel is:
 |---|---|
 | `Image:` | The image the rows and counts come from. This is the panel's way of telling you which image it is describing, and it is there in every layout. At the right of the same row: a **`?`** button with a short summary of the panel and what to do if the viewer goes blank, and the `Dock as tab` / `Undock to window` button. |
 | `Preset:` | A combo of the views saved in this project, with `Save` and `Delete`. Choosing one applies it immediately. Empty, and disabled apart from the combo, when no project is open. See [Presets: a view you named](#presets-a-view-you-named). **On a wide panel `List:` shares this row**, at its right-hand end. |
-| `Visibility rule:` | Two radio buttons, `Hide checked classes` and `Show only checked classes`. The panel opens on the second one -- see [Opening the panel hides everything](#opening-the-panel-hides-everything) and [below](#hide-checked-classes-vs-show-only-checked-classes). |
-| `See QuPath's View -> Cell Display menu` | A line of text, and a pointer rather than a control -- it names a menu and stops there. **Cell display is QuPath's own setting and has nothing to do with classes**, but it can make cells look wrong in a way that is easily blamed on this panel, which is the only reason a line about it appears here at all. See [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn). |
+| `Visibility rule:` | Two radio buttons, `Hide checked classes` and `Show only checked classes`. The panel opens on the second one -- see [Opening the panel hides everything](#opening-the-panel-hides-everything) and [below](#hide-checked-classes-vs-show-only-checked-classes). **On a wide panel the cell-display note shares this row**, at its right-hand end. |
+| `Dense cells? Try View -> Cell Display` | A line of text, and a pointer rather than a control -- it names a menu and stops there. **Cell display is QuPath's own setting and has nothing to do with classes**, but it can make cells look wrong in a way that is easily blamed on this panel, which is the only reason a line about it appears here at all. Hover it for the rest: which of the four options to try, and what changes when you do. On a wide panel it sits at the right-hand end of the `Visibility rule:` row and shortens to `Dense cells? Try...` when there is not room for all of it; on a narrow one it has a line of its own below the radios. See [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn). |
 | `List:` | Which objects are counted and listed -- `Detections`, `Cells`, `Annotations` or `All objects`. It chooses what you *see in this panel*, never what gets hidden. See [the next section](#list-chooses-what-you-see-here-not-what-gets-hidden). On a wide panel it sits at the end of the `Preset:` row; on a narrow one it has a line of its own, above `Find:`. |
 | `Find:` | One filter field over both lists. Case-insensitive, matches anywhere in the name, and the matched text is shown in **bold** in the rows that survive. **On a wide panel `Exact matches only` shares this row**, at its right-hand end. |
 | `Exact matches only` | A QuPath-wide setting. While it is on, the whole component half of the panel is greyed out. See [below](#one-qupath-setting-can-switch-the-component-list-off). At the end of the `Find:` row on a wide panel; on its own line below `Find:` on a narrow one. |
@@ -346,12 +346,17 @@ There is one panel, and it lays itself out two ways depending on how much width 
 
 - **Wide** (roughly 640 px and up, which is the usual floating size): the two lists sit side
   by side, classes on the left and components on the right, with a divider you can drag. The
-  header pairs its controls two to a row -- `Preset:` with its combo, `Save`, `Delete` and
-  then `List:`; `Find:` with its field, the clear button and then `Exact matches only`.
+  header is **three rows**, no control holding a line to itself -- `Preset:` with its combo,
+  `Save`, `Delete` and then `List:`; `Visibility rule:` with its two radios and then the
+  cell-display note; `Find:` with its field, the clear button and then `Exact matches only`.
+  When a row runs short of width the labels and the controls keep their full text and the
+  cell-display note is the one thing that shortens, because it is the only occupant you can
+  read half of and still act on.
 - **Narrow** (roughly 580 px and below, which is the usual docked width): the two lists
   stack vertically, classes above components, again with a draggable divider. **The header
-  stacks rather than compressing**: the mode radios go one above the other, and `List:`,
-  `Find:` and `Exact matches only` each take a line of their own. Nothing is dropped -- the
+  stacks rather than compressing**: the mode radios go one above the other with the
+  cell-display note on a line below them, and `List:`, `Find:` and `Exact matches only` each
+  take a line of their own. Nothing is dropped -- the
   panel would sooner be taller than push a control off its right-hand edge. The classes
   header shortens -- `Classes on detections (3 of 28)` rather than
   `Classes on detections in this image (3 of 28)`. Nothing is lost there either: the panel's
@@ -892,20 +897,34 @@ nothing of ours got to run.
 menu and has four options: `Cell boundaries only`, `Nuclei only`, `Nuclei & cell boundaries`,
 `Cell centroids only`.
 
-The panel carries one line of text pointing at it -- `See QuPath's View -> Cell Display menu`
--- and nothing more. **That line is there because of one specific confusion**, and it says so
-nowhere on screen, so it is worth stating here: if your cells have gone or look wrong, the
-cause is at least as often the cell display mode as it is a class rule, and this is the panel
-you were looking at when you noticed. `Cell centroids only` in particular turns every cell
-into a dot, which reads as "my cells are missing" to anyone who did not set it. A user who
-does not know the setting exists has no way to go looking for it, so the panel names the menu
-and leaves the rest to QuPath.
+The panel carries one line of text pointing at it -- `Dense cells? Try View -> Cell Display`
+-- with everything else on hover. **That line is there because of one specific confusion**,
+and it is far too short to say so, which is why it is worth stating here: if your cells have
+gone or look wrong, the cause is at least as often the cell display mode as it is a class
+rule, and this is the panel you were looking at when you noticed. `Cell centroids only` in
+particular turns every cell into a dot, which reads as "my cells are missing" to anyone who
+did not set it. A user who does not know the setting exists has no way to go looking for it,
+so the panel names the menu and leaves the rest to QuPath.
+
+**The visible line keeps the menu path rather than the option to pick**, and that is the
+deliberate half of the trade: a menu path cannot be guessed, whereas an option cannot be
+missed once the menu is open -- there are four of them and the one worth trying is on the
+list. The hover leads with it. Dense cells are usually easier to read drawn as outlines, so
+the option to try is `Cell boundaries only`.
+
+**Transparency is not the same in every option**, which is the part that surprises people.
+The standard `Nuclei & cell boundaries` is semi-transparent; `Cell boundaries only` is
+completely opaque. So switching does not only change the shape drawn for each cell, it
+changes how much of the image underneath comes through -- worth knowing before you decide
+the panel did something to your image.
 
 The panel used to carry a second copy of that combo, and it was dropped in 0.2.0: it was the
 one control in the panel with nothing to do with classes, and the panel it sat in was too
-busy. The pointer that replaced it at least stated the connection -- that cell visibility is
-affected by the cell display setting -- but in 0.2.1 it was cut back to the menu name alone,
-which is why the connection has to be made here instead.
+busy. The pointer that replaced it stated the connection in a full sentence; 0.2.1 cut that
+back to the menu name alone, and 0.2.2 made it a question and a path, with the explanation
+moved onto the hover where there is room for it. What no version of that line has ever had
+room for is the confusion this section opens with -- why a note about cell display sits in a
+panel about classes at all.
 
 Two things to know before you reach for it:
 

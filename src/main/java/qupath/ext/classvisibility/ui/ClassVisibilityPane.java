@@ -260,7 +260,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * and said it did not need one. What it is explaining -- that the standard cell view is
      * semi-transparent while <i>Cell boundaries only</i> is opaque -- is 1,202px of text, so the
      * whole of it can never sit on a row; the visible pointer is the part that fits, and the
-     * sentence is on hover.</p>
+     * sentence is on hover. Of the two halves that will not both fit, the line keeps the menu
+     * path rather than the option name: a path cannot be guessed, and an option cannot be missed
+     * once the menu it is in is open.</p>
      *
      * <p>Which is why this is the {@code imageLabel} pattern -- ellipsis plus a tooltip -- and
      * not a wrapping label. A wrapping label in a docked pane wraps to two lines, which would

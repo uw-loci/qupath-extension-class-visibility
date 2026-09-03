@@ -839,17 +839,25 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * field in the wide profile and the component header touching the split divider in the narrow
      * one (user, 2026-09-01).</p>
      *
-     * <p>The breathing room is {@link #GAP} above the label, on top of whatever the container
-     * above already contributes -- so nothing here has to know which profile it is in or what is
-     * sitting above it.</p>
+     * <p><b>The inset that matters is the LEADING one.</b> A {@code TableView} is a bordered
+     * box; the label above it and the controls below it are bare text in the same {@code VBox},
+     * so they start at the same x as that border and read as touching it -- which is what the
+     * user photographed. {@link #GAP} of left padding lifts them clear. The header also keeps
+     * {@code GAP} above it, on top of whatever the container above contributes, so nothing here
+     * has to know which profile it is in.</p>
+     *
+     * <p>The footer gets the same inset as the header, and that is the point of it being a
+     * parameter: fixing the label and leaving <i>Include classes not in this image</i> and the
+     * Any / All group still flush would land the fix on half of each pane.</p>
      *
      * @param pane the pane to fill
      * @param header the list's header label
      * @param table the list's table
      * @param footer the controls under the table
      */
-    private static void buildListPane(VBox pane, Label header, TableView<?> table, Node footer) {
-        header.setPadding(new Insets(GAP, 0, 0, 0));
+    private static void buildListPane(VBox pane, Label header, TableView<?> table, Region footer) {
+        header.setPadding(new Insets(GAP, 0, 0, GAP));
+        footer.setPadding(new Insets(0, 0, 0, GAP));
         // Wrapping, because both headers are sentences that name the list scope and its counts,
         // and a docked pane is narrower than either of them.
         header.setWrapText(true);
@@ -1092,6 +1100,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // strip (external tester, 2026-09-01: "put inside drop down"). The everything-hidden
         // warning does NOT -- see updateStatus.
         rulesStatusLabel.setWrapText(true);
+        // Third instance of the same defect the two list headers had: bare text sharing a VBox
+        // with a bordered table starts at the table's border and reads as touching it. Found by
+        // sweeping for the shape rather than by another screenshot.
+        rulesStatusLabel.setPadding(new Insets(0, 0, 0, GAP));
         VBox rulesContent = new VBox(GAP, rulesStatusLabel, rulesTop, ruleTable);
 
         rulesPane.setText(Strings.get("rules.none"));
@@ -1254,13 +1266,15 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         splitPane.setOrientation(Orientation.HORIZONTAL);
         splitPane.setDividerPositions(ClassVisibilityPreferences.wideDividerProperty().get());
 
-        // The note goes exactly where the user pointed: the empty space to the right of the two
-        // radios (2026-09-03). "Visibility rule:" stays above them rather than joining the row --
-        // inlining it would save another line, but it costs the note 100px of the 239px it has at
-        // the wide threshold, and the half of the pointer that gets cut first is the actionable
-        // half, the one naming the menu to go to.
-        modeRow.getChildren().setAll(hideRadio, showOnlyRadio, cellDisplayNote);
-        modeBox.getChildren().setAll(modeLabel, modeRow);
+        // All four on one row: the label joins its own controls (user, 2026-09-03), which is the
+        // last of the header's standalone label lines to go. It is the most crowded row in the
+        // panel, and the order of what gives is deliberate. The label and both radios hold their
+        // widths -- a radio reading "Hide checked cla..." is unusable, and it is the control the
+        // panel exists to operate. The note absorbs everything left over: 251px at the 760px
+        // default window, which is its full text, and 156px at the 640px wide threshold, where it
+        // truncates to its hook. Measured, both.
+        modeRow.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, cellDisplayNote);
+        modeBox.getChildren().setAll(modeRow);
 
         // Two rows, and the point of the second one is where the slack goes rather than the row
         // count. "List:" moves up beside the presets (user, 2026-09-01: "that bar is far too long
@@ -1286,9 +1300,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
 
         // Stacked, not hidden. Every zone survives the narrow profile; the only concessions are
         // stacking and ellipsis-with-tooltip on long names.
-        // Its own line here, because the radios are already stacked and there is no space beside
-        // them to move into. This is still a saving rather than the status quo: the note used to
-        // WRAP at this width, so the line it took was routinely two.
+        // Unchanged by the label move: the radios are already stacked here, so there is no
+        // single line of controls for "Visibility rule:" to join, and no space beside them for
+        // the note. The note is still a saving over 0.2.1 -- it used to WRAP at this width, so
+        // the line it took was routinely two.
         modeRow.getChildren().clear();
         modeBox.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, cellDisplayNote);
 

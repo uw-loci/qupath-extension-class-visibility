@@ -340,8 +340,9 @@ class SourceDisciplineTest {
                 .as("one grower per header row, and it is the one holding unbounded user text")
                 .contains("presetCombo", "findField");
         assertThat(protectedControls)
-                .as("every fixed-label control on the visibility-rule row, which acquired an "
-                        + "occupant that can take width off the radios in 0.2.2")
+                .as("every fixed-label control on the visibility-rule row, the panel's most "
+                        + "crowded: a label, two radios and the note all share it since 0.2.2, "
+                        + "and a radio reading \"Hide checked cla...\" is unusable")
                 .contains("modeLabel", "hideRadio", "showOnlyRadio");
         assertThat(growers)
                 .as("nothing else on any header row may grow -- a second grower means the "
@@ -374,7 +375,8 @@ class SourceDisciplineTest {
         String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
                 "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
         assertThat(pane)
-                .as("wrapping would trade the saved line for two")
+                .as("wrapping would trade the saved line for two -- and since 0.2.2 it would do "
+                        + "it on the row the label just moved onto, in the WIDE profile")
                 .doesNotContain("cellDisplayNote.setWrapText(true)");
         assertThat(pane)
                 .as("it truncates instead, like the image label")
@@ -384,8 +386,39 @@ class SourceDisciplineTest {
                 .contains("cellDisplayNote.setTooltip(")
                 .contains("cellDisplayNote.setAccessibleText(");
         assertThat(pane)
-                .as("it rides the radio row in the wide profile, which is what the user asked for")
-                .contains("modeRow.getChildren().setAll(hideRadio, showOnlyRadio, cellDisplayNote)");
+                .as("it rides the visibility-rule row in the wide profile, last in the row, so "
+                        + "it is the control that absorbs what the other three leave over")
+                .contains("modeRow.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, "
+                        + "cellDisplayNote)");
+    }
+
+    /**
+     * Bare text sharing a VBox with a bordered table must not start at the table's border.
+     *
+     * <p>The user photographed this twice before it was understood -- it was first passed on as
+     * needing space <i>above</i> the two list headers, and the request was for a leading space,
+     * <i>before</i> the text on its line. A {@code TableView} draws a border; a {@code Label} in
+     * the same {@code VBox} does not, so identical x positions read as the text touching the box.
+     * </p>
+     *
+     * <p>Which makes it a shape rather than an incident, and the sweep found a third instance the
+     * user had not reached yet: the status line inside the <i>Active rules</i> expander, sitting
+     * above that table exactly as the two list headers sit above theirs. All five nodes -- two
+     * headers, two footers, one status line -- take the same inset from the same constant.</p>
+     */
+    @Test
+    void nothingBareSitsFlushAgainstATablesBorder() throws IOException {
+        String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
+                "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
+        assertThat(pane)
+                .as("the third instance, found by sweeping for the shape rather than by "
+                        + "waiting for another screenshot")
+                .contains("rulesStatusLabel.setPadding(new Insets(0, 0, 0, GAP))");
+        assertThat(methodBody(pane,
+                "private static void buildListPane(VBox pane, Label header,"))
+                .as("both lists take it from the one factory, header and footer alike")
+                .contains("header.setPadding(new Insets(GAP, 0, 0, GAP))")
+                .contains("footer.setPadding(new Insets(0, 0, 0, GAP))");
     }
 
     /**
@@ -449,9 +482,16 @@ class SourceDisciplineTest {
         assertThat(pane)
                 .contains("buildListPane(classPane, classHeader, classTable")
                 .contains("buildListPane(componentPane, componentHeader, componentTable");
-        assertThat(methodBody(pane, "private static void buildListPane(VBox pane, Label header,"))
-                .as("the breathing room above a list header is set once, for both lists")
-                .contains("header.setPadding(new Insets(GAP, 0, 0, 0))");
+        String factory = methodBody(pane,
+                "private static void buildListPane(VBox pane, Label header,");
+        assertThat(factory)
+                .as("the leading inset that lifts a list header off the table's border, and the "
+                        + "space above it, are set once for both lists")
+                .contains("header.setPadding(new Insets(GAP, 0, 0, GAP))");
+        assertThat(factory)
+                .as("and the controls UNDER the table are flush for the same reason, so they get "
+                        + "the same inset -- fixing only the header lands it on half of each pane")
+                .contains("footer.setPadding(new Insets(0, 0, 0, GAP))");
     }
 
     /**

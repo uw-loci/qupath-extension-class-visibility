@@ -167,7 +167,7 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         installed = true;
         this.qupath = qupathGui;
 
-        logger.info("Installing extension: {}", EXTENSION_NAME);
+        logger.debug("Installing extension: {}", EXTENSION_NAME);
         ClassVisibilityPreferences.installPreferences();
 
         Platform.runLater(() -> {
@@ -223,7 +223,7 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         // collapses the analysis pane, and neither of those runs any code of ours.
         menu.setOnShowing(e -> syncMenuItemText());
         syncMenuItemText();
-        logger.info("Registered menu items: Extensions > {}", EXTENSION_NAME);
+        logger.debug("Registered menu items: Extensions > {}", EXTENSION_NAME);
     }
 
     /** Keep the Extensions-menu items saying what they will actually do next. */
@@ -430,6 +430,8 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         if (!isOpen()) {
             pane = new ClassVisibilityPane(qupath);
             attachToWindow();
+            logger.info("Opened the Class visibility panel; closing it restores {}",
+                    pane.describeOpeningState());
             return;
         }
         if (isDocked()) {
@@ -475,7 +477,6 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         window.show();
         Platform.runLater(pane::focusFind);
         syncToolbarState();
-        logger.info("Opened the Class visibility window");
     }
 
     /**
@@ -653,7 +654,8 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
             case NONE -> { }
         }
         syncToolbarState();
-        logger.info("Closed the Class visibility panel");
+        logger.info("Closed the Class visibility panel: restore {}{}, {} class rule(s) in force",
+                outcome, guarded ? ", guard reset an empty 'show only' to 'hide'" : "", remaining);
     }
 
     /** What a close has to tell the user, if anything. */
@@ -852,7 +854,8 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
     private void tryInsertToolbarButton(int attempt) {
         ToolBar toolBar = qupath.getToolBar();
         if (toolBar == null) {
-            logger.warn("Cannot inject Class Visibility toolbar button: toolbar is null");
+            logger.warn("Installed {} (Extensions menu) without its toolbar button: the "
+                    + "toolbar is null", EXTENSION_NAME);
             return;
         }
         Action bcAction = brightnessContrastAction();
@@ -861,8 +864,8 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
                 Platform.runLater(() -> tryInsertToolbarButton(attempt + 1));
                 return;
             }
-            logger.warn("Brightness/Contrast action not found after {} attempts; skipping the "
-                    + "Class Visibility toolbar button (the Extensions menu item still works)", attempt);
+            logger.warn("Installed {} (Extensions menu) without its toolbar button: the "
+                    + "Brightness/Contrast action was not found after {} attempts", EXTENSION_NAME, attempt);
             return;
         }
         int index = findActionButtonIndex(toolBar, bcAction);
@@ -871,14 +874,15 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
                 Platform.runLater(() -> tryInsertToolbarButton(attempt + 1));
                 return;
             }
-            logger.warn("Brightness/Contrast toolbar button not found after {} attempts; skipping the "
-                    + "Class Visibility toolbar button (the Extensions menu item still works)", attempt);
+            logger.warn("Installed {} (Extensions menu) without its toolbar button: the "
+                    + "Brightness/Contrast button was not found after {} attempts", EXTENSION_NAME, attempt);
             return;
         }
         toolbarButton = buildToolbarButton();
         toolBar.getItems().add(index + 1, toolbarButton);
         syncToolbarState();
-        logger.info("Inserted Class Visibility toolbar button at index {}", index + 1);
+        logger.info("Installed {}: Extensions menu, and toolbar button at index {}",
+                EXTENSION_NAME, index + 1);
     }
 
     private Action brightnessContrastAction() {

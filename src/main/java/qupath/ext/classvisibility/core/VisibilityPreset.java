@@ -192,14 +192,18 @@ public final class VisibilityPreset {
         if (tokens == null) {
             return classes;
         }
+        int blanks = 0;
         for (String token : tokens) {
             if (token == null) {
                 classes.add(PathClass.NULL_CLASS);
             } else if (token.isBlank()) {
-                logger.warn("Ignoring a blank class name in a visibility preset");
+                blanks++;
             } else {
                 classes.add(PathClass.fromString(token));
             }
+        }
+        if (blanks > 0) {
+            logger.warn("Ignored {} blank class name(s) in a visibility preset", blanks);
         }
         return classes;
     }

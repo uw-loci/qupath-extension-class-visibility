@@ -66,7 +66,7 @@ public final class ClassVisibilityPreferences {
         if (installed) {
             return;
         }
-        logger.info("Installing Class Visibility preferences");
+        logger.debug("Installing Class Visibility preferences");
 
         windowXProperty = PathPrefs.createPersistentPreference(PREFIX + "windowX", SENTINEL);
         windowYProperty = PathPrefs.createPersistentPreference(PREFIX + "windowY", SENTINEL);
@@ -109,7 +109,7 @@ public final class ClassVisibilityPreferences {
                 VisibilityRuleModel.Combination.class);
 
         installed = true;
-        logger.info("Class Visibility preferences installed");
+        logger.debug("Class Visibility preferences installed");
     }
 
     private static void ensureInstalled() {

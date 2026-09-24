@@ -60,7 +60,7 @@ public final class VisibilityStateStore {
      */
     public static synchronized VisibilitySnapshot capture(OverlayOptions options) {
         snapshot = VisibilitySnapshot.capture(options);
-        logger.info("Captured visibility snapshot at panel open ({} class rules, mode {})",
+        logger.debug("Captured visibility snapshot at panel open ({} class rules, mode {})",
                 snapshot.selectedClasses().size(), snapshot.visibilityMode());
         return snapshot;
     }
@@ -79,7 +79,7 @@ public final class VisibilityStateStore {
     public static synchronized void captureIfAbsent(OverlayOptions options) {
         if (snapshot == null) {
             snapshot = VisibilitySnapshot.capture(options);
-            logger.info("Captured automatic visibility snapshot before first change");
+            logger.debug("Captured automatic visibility snapshot before first change");
         }
     }
 

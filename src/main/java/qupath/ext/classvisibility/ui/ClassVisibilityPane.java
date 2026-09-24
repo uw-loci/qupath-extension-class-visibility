@@ -602,6 +602,15 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         return openingSnapshot != null && openingSnapshot.matchesRules(options);
     }
 
+    /** @return what the opening snapshot holds, for the one log line the open writes. */
+    public String describeOpeningState() {
+        if (openingSnapshot == null) {
+            return "nothing (no snapshot)";
+        }
+        return openingSnapshot.selectedClasses().size() + " class rule(s), mode "
+                + openingSnapshot.visibilityMode();
+    }
+
     /**
      * Replay a snapshot without ever throwing, as a static so it can be tested against options
      * that fail mid-restore.
@@ -627,7 +636,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         }
         try {
             snapshot.restore(options);
-            logger.info("Restored the visibility state the Class visibility panel opened onto");
+            logger.debug("Restored the visibility state the Class visibility panel opened onto");
             return RestoreOutcome.RESTORED;
         } catch (RuntimeException ex) {
             logger.warn("Could not restore the visibility state the panel opened onto: {}",
@@ -680,7 +689,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         if (options.getSelectedClassVisibilityMode() == OverlayOptions.ClassVisibilityMode.SHOW_SELECTED
                 && options.selectedClassesProperty().isEmpty()) {
             options.setSelectedClassVisibilityMode(OverlayOptions.ClassVisibilityMode.HIDE_SELECTED);
-            logger.info("Class visibility guard: reset SHOW_SELECTED with an empty rule set to HIDE_SELECTED");
+            // Debug: every caller that can fire this logs its own line saying so.
+            logger.debug("Class visibility guard: reset SHOW_SELECTED with an empty rule set to HIDE_SELECTED");
             return true;
         }
         return false;

@@ -4,6 +4,26 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.3.2
+
+### A quieter log
+
+Each action now writes one line to QuPath's log instead of several:
+
+- **Startup** was five INFO lines (installing, two for preferences, the menu, the toolbar
+  button). It is now one: `Installed Class Visibility: Extensions menu, and toolbar button at
+  index N`, or a single warning naming what could not be added.
+- **Opening the panel** was two lines; it is now one, which also says what closing will
+  restore (`N class rule(s), mode ...`).
+- **Closing** was up to three lines; it is now one, carrying the restore outcome, whether the
+  empty-"show only" guard fired, and how many class rules are left in force.
+- **Undocking** no longer also logs an "opened" line.
+- A preset with several blank class names logs one warning with the count rather than one per
+  name.
+
+The detail that was dropped is still available at DEBUG level. Nothing about what the panel
+does changed.
+
 ## 0.3.1
 
 ### The top of the panel collapses

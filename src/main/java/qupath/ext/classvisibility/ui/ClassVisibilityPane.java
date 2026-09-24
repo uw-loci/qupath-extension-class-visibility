@@ -5,6 +5,8 @@ import javafx.application.Platform;
 import javafx.animation.KeyValue;
 import javafx.animation.Timeline;
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.ReadOnlyStringProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.value.ChangeListener;
@@ -61,6 +63,7 @@ import qupath.ext.classvisibility.core.ClassCensus;
 import qupath.ext.classvisibility.core.ClassHarvester;
 import qupath.ext.classvisibility.core.ClassVisibilityController;
 import qupath.ext.classvisibility.core.CombinationHint;
+import qupath.ext.classvisibility.core.ComponentMatchHighlight;
 import qupath.ext.classvisibility.core.VisibilityPreset;
 import qupath.ext.classvisibility.core.VisibilityPresetStore;
 import qupath.ext.classvisibility.core.VisibilityRuleModel;
@@ -178,6 +181,15 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private static final int HINT_HALF_CYCLES = 6;
     private static final double HINT_GLOW_RADIUS = 14;
     private static final double HINT_GLOW_SPREAD = 0.55;
+
+    /**
+     * The steady ring on the check box of a class row the checked components cover. Quieter than
+     * the everything-hidden halo (10 / 0.6) so the two never read as the same signal, and swelled
+     * to the hint's radius and spread by the pulse, so the pulse is the same design as the Any /
+     * All one rather than a second.
+     */
+    private static final double COVERED_MARK_RADIUS = 5;
+    private static final double COVERED_MARK_SPREAD = 0.35;
 
     private static final NumberFormat COUNTS = NumberFormat.getIntegerInstance();
 
@@ -355,6 +367,19 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** The running pulse, or null. Held so every teardown path can stop it. */
     private Timeline combinationHintPulse;
 
+    /** Decides when the covered class rows pulse: every time the component rule changes. */
+    private final ComponentMatchHighlight componentMatchHighlight = new ComponentMatchHighlight();
+
+    /**
+     * 0 at rest, 1 at the peak of a swell. Every covered row's ring is bound to it, so one
+     * timeline pulses however many rows are on screen and a row scrolled into view mid-pulse
+     * joins in at the right phase.
+     */
+    private final DoubleProperty componentMatchPulseLevel = new SimpleDoubleProperty(0);
+
+    /** The running covered-row pulse, or null. Stopped on the same paths as the hint pulse. */
+    private Timeline componentMatchPulse;
+
     /** Held so {@link #dispose()} can detach them from the session-lived shared options. */
     private ChangeListener<OverlayOptions.ClassVisibilityMode> modeListener;
     private ChangeListener<Boolean> exactListener;
@@ -394,6 +419,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         visibleForUpdatesProperty().addListener((obs, wasVisible, isVisible) -> {
             if (!Boolean.TRUE.equals(isVisible)) {
                 stopCombinationHintPulse();
+                stopComponentMatchPulse();
             }
         });
         applyOpeningState();
@@ -510,6 +536,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      */
     public void dispose() {
         stopCombinationHintPulse();
+        stopComponentMatchPulse();
         controller.uninstall();
         if (modeListener != null) {
             options.selectedClassVisibilityModeProperty().removeListener(modeListener);
@@ -1911,6 +1938,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // The components on screen are about to be replaced, so a glow around a control that was
         // describing the old image's components is pointing at nothing.
         stopCombinationHintPulse();
+        stopComponentMatchPulse();
         currentImageName = imageName;
         imageLabel.setText(imageName == null
                 ? Strings.get("label.image.none")
@@ -2219,6 +2247,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         updateRuleTable();
         updateStatus();
         updateCheckAllState();
+        updateComponentMatchPulse();
         classTable.refresh();
         componentTable.refresh();
     }
@@ -2350,6 +2379,58 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         if (combinationBox != null && combinationBox.getEffect() == combinationHintGlow) {
             combinationBox.setEffect(null);
         }
+    }
+
+    /**
+     * @param pathClass a listed class; {@code null} is treated as Unclassified
+     * @return whether the component rule in force reaches it
+     */
+    private boolean coveredByComponents(PathClass pathClass) {
+        return ComponentMatchHighlight.covers(model.componentDerivedEntries(), pathClass,
+                options.getUseExactSelectedClasses());
+    }
+
+    /**
+     * Pulse the covered class rows when the component rule has just changed. The rows' steady
+     * ring is drawn by {@link ClassCheckCell} on every render; this only drives the swell.
+     */
+    private void updateComponentMatchPulse() {
+        Set<PathClass> entries = model.componentDerivedEntries();
+        int covered = entries.isEmpty() ? 0
+                : (int) classRows.stream().filter(row -> coveredByComponents(row.pathClass())).count();
+        boolean mayPulse = ClassVisibilityPreferences.pulseComponentMatchesProperty().get()
+                && visibleForUpdatesProperty().get();
+        switch (componentMatchHighlight.onComponentEntries(entries, covered, mayPulse)) {
+            case PULSE -> startComponentMatchPulse();
+            case STOP -> stopComponentMatchPulse();
+            case NONE -> { }
+        }
+    }
+
+    /**
+     * Swell the ring on every covered class row: the Any / All hint's rate, count and peak, so
+     * the same five seconds and the same 0.6 Hz -- see {@link #HINT_HALF_PERIOD}. It settles back
+     * to the steady ring rather than to nothing, because the rows are still covered.
+     */
+    private void startComponentMatchPulse() {
+        stopComponentMatchPulse();
+        Timeline pulse = new Timeline(
+                new KeyFrame(Duration.ZERO, new KeyValue(componentMatchPulseLevel, 0.0)),
+                new KeyFrame(HINT_HALF_PERIOD, new KeyValue(componentMatchPulseLevel, 1.0)));
+        pulse.setAutoReverse(true);
+        pulse.setCycleCount(HINT_HALF_CYCLES);
+        pulse.setOnFinished(e -> componentMatchPulseLevel.set(0));
+        componentMatchPulse = pulse;
+        pulse.play();
+    }
+
+    /** Stop the covered-row pulse and drop the rings back to steady. Idempotent. */
+    private void stopComponentMatchPulse() {
+        if (componentMatchPulse != null) {
+            componentMatchPulse.stop();
+            componentMatchPulse = null;
+        }
+        componentMatchPulseLevel.set(0);
     }
 
     private void updateRuleTable() {
@@ -2575,11 +2656,27 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     // Cells
     // ------------------------------------------------------------------------------------------
 
+    /**
+     * The class row's check box, ringed while the checked components cover the row.
+     *
+     * <p>The ring goes on the check box rather than the name so it cannot collide with the bold
+     * {@code Find} matches, and because the check box is the control the component rule is
+     * standing in for -- which is the comparison the ring draws. It is what separates a row that
+     * is on because it was ticked from one that is on because a component reaches it.</p>
+     */
     private final class ClassCheckCell extends TableCell<ClassRow, ClassRow> {
 
         private final CheckBox checkBox = new CheckBox();
 
+        /** One per cell, bound to the pane's pulse level, so every covered row swells together. */
+        private final DropShadow coveredMark = new DropShadow(BlurType.GAUSSIAN,
+                EVERYTHING_HIDDEN_HALO_COLOR, COVERED_MARK_RADIUS, COVERED_MARK_SPREAD, 0, 0);
+
         private ClassCheckCell() {
+            coveredMark.radiusProperty().bind(componentMatchPulseLevel
+                    .multiply(HINT_GLOW_RADIUS - COVERED_MARK_RADIUS).add(COVERED_MARK_RADIUS));
+            coveredMark.spreadProperty().bind(componentMatchPulseLevel
+                    .multiply(HINT_GLOW_SPREAD - COVERED_MARK_SPREAD).add(COVERED_MARK_SPREAD));
             checkBox.setOnAction(e -> {
                 ClassRow row = getItem();
                 if (row != null) {
@@ -2597,16 +2694,23 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             }
             PathClass key = item.pathClass() == null ? PathClass.NULL_CLASS : item.pathClass();
             boolean derived = model.componentDerivedEntries().contains(key);
+            boolean covered = coveredByComponents(key);
             checkBox.setSelected(model.isClassSelected(key));
             checkBox.setDisable(derived);
+            checkBox.setEffect(covered ? coveredMark : null);
             checkBox.setTooltip(new Tooltip(derived
                     ? Strings.get("tooltip.row.class.disabled")
+                    : covered
+                    ? Strings.get("tooltip.row.class.covered")
                     : Strings.get("tooltip.row.class")));
             // JavaFX shows no tooltip on a disabled node, so the explanation for a checkbox the
             // user cannot tick has to live on the cell around it -- otherwise the one row in the
             // list that refuses to respond is the one row with nothing to say for itself.
             setTooltip(derived ? new Tooltip(Strings.get("tooltip.row.class.disabled")) : null);
-            checkBox.setAccessibleText(Strings.format("accessible.row.class", item.displayName()));
+            // The ring is colour and glow only, so a screen reader needs it in words.
+            checkBox.setAccessibleText(covered
+                    ? Strings.format("accessible.row.class.covered", item.displayName())
+                    : Strings.format("accessible.row.class", item.displayName()));
             setGraphic(checkBox);
         }
     }
@@ -2951,6 +3055,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /**
      * The Affects cell: how many objects a click on this row would act on, right now. Bold when
      * that is more than the row's own Count, which is the case the Count column alone misreports.
+     * The column tooltip says so, since nothing else on screen does.
      */
     private final class AffectsCell extends TableCell<ClassRow, ClassRow> {
 

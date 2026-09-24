@@ -328,6 +328,8 @@ its dock/undock button should say via `setSurfaceToggle` / `hideSurfaceToggle`.
 | `VisibilityStateStore` | `.core` | Holds the one snapshot. `capture` **replaces** it and runs when the panel opens; `captureIfAbsent` covers the menu actions that run with the panel closed |
 | `VisibilityPreset` | `.core` | One named preset as JSON: class rules and panel checks as **strings**, plus the mode, exact flag, cell display, opacity and the per-type booleans. Versioned, and tolerant of a file written before a field existed |
 | `VisibilityPresetStore` | `.core` | The project's own `ResourceManager` at `resources/class-visibility`, the mechanism Brightness & Contrast uses for its settings. Degrades to an empty list with no project; never throws at a click |
+| `ComponentMatchHighlight` | `.core` | Which class rows the component rule covers (through `ClassCensus.ruleMatches`) and when the covered rows pulse. Pure, JavaFX-free |
+| `CombinationHint` | `.core` | When the `Any` / `All` teaching pulse fires: once per session. Pure, JavaFX-free |
 | `MatchHighlighter` | `.ui` | Splits a name into matched and unmatched runs for the `Find` bolding. Mirrors `applyFilter`'s predicate exactly, and declines to highlight when case folding changes the string's length. Pure, JavaFX-free |
 | `ClassRow` / `ComponentRow` / `RuleRow` | `.ui` | Row view models for the three tables |
 | `Strings` | `.ui` | Accessor over `strings.properties`. **Every user-facing string lives in that file**, not in Java source |
@@ -380,7 +382,10 @@ already been got wrong once somewhere.
    classes, and an `All` composite is never a census key by construction. Route every such
    count through `ClassCensus.matchedObjectsForClass`, as `countOrphanRules()`,
    `ruleStatusText` and the `Affects` column all now do. This shipped wrong in 0.1.x, on
-   exactly the data the extension is for.
+   exactly the data the extension is for. The per-class question -- does this entry reach
+   that class -- is `ClassCensus.ruleMatches`, the single copy of the viewer's predicate that
+   `matchedObjectsForClass` and the covered-row ring (`ComponentMatchHighlight.covers`) both
+   call. Do not write a second one.
 7. **Scope `All objects` must not use the `synchronized` hierarchy accessors**
    (`getAllObjects(boolean)`, `getFlattenedObjectList(...)`) -- they contend with a running
    classifier for the length of a million-object walk.
@@ -448,6 +453,17 @@ already been got wrong once somewhere.
     model half hiding **exactly the class it asked to isolate**, and lets a repaint land
     between the two writes showing the inverse for a frame. There is deliberately no
     `VisibilityRuleModel` constructor without a `VisibilityModeSwitch` (finding L1).
+19. **The two attention pulses have opposite repetition rules, so they have separate decision
+    objects and separate preferences.** `CombinationHint` teaches the `Any` / `All` control:
+    once per session, on the crossing to two components, latch unspent when it cannot fire.
+    `ComponentMatchHighlight` is feedback: it pulses on every change to the component rule's
+    **entries** (not its checked names -- `Any` and `All` over the same names are different
+    entries), never on a census, filter or mode refresh, and holds nothing back for later.
+    Both share `HINT_HALF_PERIOD` / `HINT_HALF_CYCLES` so they read as one design, and both
+    are stopped on every teardown path (`dispose`, the pane leaving the screen, image change).
+    The covered-row ring's steady state is not preference-gated; only the motion is. The ring
+    goes on the class row's check box, not its name, so it cannot collide with the `Find`
+    bolding.
 
 ### The snapshot, and how it differs from a preset
 

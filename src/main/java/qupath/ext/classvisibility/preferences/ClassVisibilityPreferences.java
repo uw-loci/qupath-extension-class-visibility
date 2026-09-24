@@ -49,6 +49,7 @@ public final class ClassVisibilityPreferences {
     private static BooleanProperty rulesExpandedProperty;
     private static BooleanProperty includeEmptyClassesProperty;
     private static BooleanProperty highlightNewControlsProperty;
+    private static BooleanProperty pulseComponentMatchesProperty;
     private static DoubleProperty coverageThresholdProperty;
     private static ObjectProperty<ClassHarvester.Scope> scopeProperty;
     private static ObjectProperty<VisibilityRuleModel.Combination> combinationProperty;
@@ -85,6 +86,11 @@ public final class ClassVisibilityPreferences {
         // shown -- that is a session flag in CombinationHint; see its javadoc.
         highlightNewControlsProperty = PathPrefs.createPersistentPreference(
                 PREFIX + "highlightNewControls", true);
+        // Its own switch, not highlightNewControls: that one turns off a once-a-session teaching
+        // pulse, and a user who did so has not asked to lose continuous feedback. Only the motion
+        // is gated; the steady mark on covered rows is information and is always drawn.
+        pulseComponentMatchesProperty = PathPrefs.createPersistentPreference(
+                PREFIX + "pulseComponentMatches", true);
         // The fraction of an image's classes a component must appear in before its spread ratio
         // is emphasised. 0.8 is a design starting point, not a measured constant -- it is a
         // preference so it can be retuned from bench data without a release.
@@ -177,6 +183,15 @@ public final class ClassVisibilityPreferences {
     public static BooleanProperty highlightNewControlsProperty() {
         ensureInstalled();
         return highlightNewControlsProperty;
+    }
+
+    /**
+     * @return whether the class rows a component rule covers pulse briefly each time that rule
+     *         changes. The steady mark on those rows does not depend on it.
+     */
+    public static BooleanProperty pulseComponentMatchesProperty() {
+        ensureInstalled();
+        return pulseComponentMatchesProperty;
     }
 
     /** @return the coverage fraction above which a component's spread ratio is emphasised. */

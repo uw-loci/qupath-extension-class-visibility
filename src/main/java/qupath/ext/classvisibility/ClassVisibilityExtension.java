@@ -209,12 +209,15 @@ public class ClassVisibilityExtension implements QuPathExtension, GitHubProject 
         CheckMenuItem highlightItem = new CheckMenuItem(Strings.get("menu.highlightNewControls"));
         highlightItem.selectedProperty().bindBidirectional(
                 ClassVisibilityPreferences.highlightNewControlsProperty());
+        CheckMenuItem pulseMatchesItem = new CheckMenuItem(Strings.get("menu.pulseComponentMatches"));
+        pulseMatchesItem.selectedProperty().bindBidirectional(
+                ClassVisibilityPreferences.pulseComponentMatchesProperty());
 
         MenuItem helpItem = new MenuItem(Strings.get("menu.help"));
         helpItem.setOnAction(e -> showHelp());
         menu.getItems().addAll(showHideMenuItem, new SeparatorMenuItem(),
                 restoreStateMenuItem, resetAllItem,
-                new SeparatorMenuItem(), highlightItem, helpItem);
+                new SeparatorMenuItem(), highlightItem, pulseMatchesItem, helpItem);
         // The labels are recomputed as the menu opens, for the same reason the toolbar tooltip is:
         // "is the panel visible" also changes when the user selects another analysis tab or
         // collapses the analysis pane, and neither of those runs any code of ours.

@@ -153,19 +153,38 @@ public final class ClassCensus {
         if (exactMatchesOnly || key == PathClass.NULL_CLASS) {
             return countForClass(key);
         }
-        Set<String> ruleParts = key.toSet();
         long total = 0L;
         for (Map.Entry<PathClass, Long> entry : classCounts.entrySet()) {
-            PathClass candidate = entry.getKey();
-            if (key.equals(candidate)) {
-                total += entry.getValue();
-            } else if (candidate != PathClass.NULL_CLASS
-                    && (candidate.isDerivedClass() || key.isDerivedClass())
-                    && candidate.toSet().containsAll(ruleParts)) {
+            if (ruleMatches(key, entry.getKey(), false)) {
                 total += entry.getValue();
             }
         }
         return total;
+    }
+
+    /**
+     * Whether a rule entry reaches objects of one class, by the viewer's own predicate.
+     *
+     * <p>The one copy of the rule behind {@link #matchedObjectsForClass(PathClass, boolean)}, the
+     * {@code Active rules} statuses, and the class rows marked as covered by the checked
+     * components, so those views cannot disagree with each other or with the viewer.</p>
+     *
+     * @param rule an entry in {@code selectedClasses}; {@code null} is treated as Unclassified
+     * @param candidate the class an object carries; {@code null} is treated as Unclassified
+     * @param exactMatchesOnly the current value of QuPath's {@code Exact matches only} setting
+     * @return whether that rule matches that class
+     */
+    public static boolean ruleMatches(PathClass rule, PathClass candidate, boolean exactMatchesOnly) {
+        PathClass key = rule == null ? PathClass.NULL_CLASS : rule;
+        PathClass target = candidate == null ? PathClass.NULL_CLASS : candidate;
+        if (key.equals(target)) {
+            return true;
+        }
+        if (exactMatchesOnly || key == PathClass.NULL_CLASS || target == PathClass.NULL_CLASS) {
+            return false;
+        }
+        return (target.isDerivedClass() || key.isDerivedClass())
+                && target.toSet().containsAll(key.toSet());
     }
 
     /** @return the number of distinct classes, Unclassified included -- the spread denominator. */

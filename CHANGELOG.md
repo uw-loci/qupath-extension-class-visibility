@@ -4,6 +4,40 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.3.0
+
+### Class rows show which of them your components reach
+
+Check a component and every class row it reaches now gets a **blue ring round its check
+box**, for as long as the component stays checked. Until now nothing connected a checked
+component back to the classes it acts on: you checked `CD3`, objects changed in the viewer,
+and the classes list looked exactly as it had before. The ring also makes visible something
+that was implicit: a row that is on because you ticked it has a tick, and a row that is on
+because a component reaches it has a ring.
+
+The ring uses the same matching rule as the viewer, the `Affects` column and the
+`Active rules` statuses. Under `All`, only classes carrying every checked component are
+ringed. With `Exact matches only` on, a component reaches only a class with exactly its name,
+and Unclassified is never ringed.
+
+**Each change to the components pulses the ringed rows** for about five seconds -- the same
+three slow swells as the `Any` / `All` hint -- and then they settle back to the steady ring.
+It fires on every change, including an uncheck and an `Any` / `All` switch, and never on a
+count refresh, a `Find` filter or an image switch.
+
+The pulse has its own switch, **Extensions > Class Visibility >
+`Pulse the classes a component change covers`**, on by default. It is separate from the
+`Any` / `All` one: turning off a once-a-session hint is not the same request as turning off
+feedback. The switch stops the motion only; the steady ring always stays. Hovering a ringed
+check box explains it, and screen readers announce the row as already covered.
+
+### The `Affects` column says why it is sometimes bold
+
+The column's hover text now says that the number is bold on rows where it is more than the
+class's own count, and that with `Exact matches only` on nothing is bold. Before, the bolding
+was explained only in the user guide, and a column where all the bolding disappeared at once
+looked like a rendering fault.
+
 ## 0.2.2
 
 **Layout and wording.** Nothing about what the panel does changed: every rule, preset and

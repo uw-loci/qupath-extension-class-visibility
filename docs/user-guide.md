@@ -469,6 +469,10 @@ would then do. **It renders in bold whenever it is larger than `Count`** -- the 
 see by how much. When the two are equal `Affects` is plain, and on a small project they will
 usually be equal all the way down the list.
 
+**With `Exact matches only` on, nothing in the column is bold.** That is not a rendering
+fault: a click then acts on the class itself and nothing else, so `Affects` equals `Count` on
+every row. The column's hover text says the same.
+
 `Affects` is the number to trust for a decision and the number to read after a surprise.
 `Count` is still the honest answer to "how many cells are `CD3: CD8`", which is the question a
 figure legend usually asks -- but take a figure's numbers from a measurement table, which
@@ -779,6 +783,42 @@ and it is the most common source of surprise in either mode.
   This is the one no other QuPath interface can express, and on a highly multiplexed image
   it is usually what you actually mean -- the more markers a class carries, the less useful
   "contains any of these" becomes.
+
+### Seeing which classes your components reach
+
+**Every class row the component rule reaches has a blue ring round its check box.** Check
+`CD3` and each class carrying `CD3` -- `CD3`, `CD3: CD8`, `CD3: CD8: PD1` -- is ringed; the
+rest are not. The ring stays for as long as those components stay checked. It is how you
+tell a row that is on because **you ticked it** from one that is on because **a component
+reaches it**: a ticked row has a tick, a reached row has a ring, and a row can have both.
+
+The ring follows the same rule the viewer does, so it never marks a class the viewer leaves
+alone:
+
+- under **`All`**, only classes carrying **every** checked component are ringed, and
+  switching between `Any` and `All` moves the rings to match;
+- with **`Exact matches only`** on, a component reaches only a class with exactly its name,
+  so usually nothing is ringed at all -- the same thing
+  [the warning under that checkbox](#one-qupath-setting-can-switch-the-component-list-off)
+  tells you;
+- **Unclassified** is never ringed, because no component can reach it.
+
+**Each time you change the components, the rings pulse** for about five seconds -- three
+slow swells, the same rate as the `Any` / `All` hint -- and then settle back to the steady
+ring. Unlike that hint it is not once a session: it happens on every change, including an
+uncheck that leaves other components still checked and an `Any` / `All` switch with two or
+more checked. It does not happen when the counts refresh, when you type in `Find`, or when
+you switch image, because none of those changed what your components reach.
+
+The classes list stays sorted by `Affects`, so ringed rows are usually scattered down it
+rather than grouped. Scroll, or type the component into `Find`, to walk through them.
+
+If you would rather not have the pulse, untick
+**`Pulse the classes a component change covers`** in **Extensions > Class Visibility**. That
+turns off the motion only; the steady ring always stays, because it is information rather
+than a hint. The setting is separate from the `Any` / `All` one, so turning either off
+leaves the other alone. Hovering a ringed row's check box explains the ring, and a screen
+reader reads it as "already covered by the checked components".
 
 ### How the two lists combine
 
@@ -1203,13 +1243,16 @@ There is no `Save visibility state` on these menus. The single manual save slot 
 offer has been replaced by named presets in the panel header, which are saved in the project
 rather than for the session -- see [Presets: a view you named](#presets-a-view-you-named).
 
-**One item is on the Extensions menu only**, and deliberately:
+**Two items are on the Extensions menu only**, and deliberately:
 `Highlight the Any / All choice when it first applies`, a tickbox that switches off the
 five-second glow described in
-[Combining components](#combining-components-any-and-all). It is a preference, not a recovery
-action, and the toolbar button's menu is the recovery route -- mixing a setting into it would
-dilute what that menu is for. It is not in the panel either, where a permanent tickbox would
-be lasting clutter bought for a hint that fires once a session.
+[Combining components](#combining-components-any-and-all), and
+`Pulse the classes a component change covers`, which switches off the pulse described in
+[Seeing which classes your components reach](#seeing-which-classes-your-components-reach).
+They are preferences, not recovery actions, and the toolbar button's menu is the recovery
+route -- mixing a setting into it would dilute what that menu is for. They are not in the
+panel either, where two permanent tickboxes would be lasting clutter for settings most people
+set once or never.
 
 **Either gesture opens the toolbar menu.** Right-click anywhere on the button, or left-click
 the small triangle at its bottom-right corner. The triangle is a marker rather than a target
@@ -1676,6 +1719,7 @@ difference decides what comes back after a restart.
 | Saved presets | the panel | **yes**, in the project | one set per project, shared with anyone who opens it |
 | `Any` / `All` | the panel | yes | the panel |
 | `Highlight the Any / All choice when it first applies` | the panel | yes | one machine, every project |
+| `Pulse the classes a component change covers` | the panel | yes | one machine, every project |
 | `List` scope | the panel | yes | the panel |
 | Divider position between the two lists | the panel | yes | separately for the wide and narrow layouts |
 | `Active rules` expanded or collapsed | the panel | yes | the panel |

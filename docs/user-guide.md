@@ -207,6 +207,7 @@ Top to bottom, the panel is:
 | Zone | What it is |
 |---|---|
 | `Image:` | The image the rows and counts come from. This is the panel's way of telling you which image it is describing, and it is there in every layout. At the right of the same row: a **`?`** button with a short summary of the panel and what to do if the viewer goes blank, and the `Dock as tab` / `Undock to window` button. |
+| `Collapse` / `Expand` | At the **left** of the `Image:` row. `Collapse` hides everything from `Preset:` down to `Find:` so the two lists get the height; the `Image:` row stays, and so does the `Exact matches only` warning if it is showing. See [Collapsing the top of the panel](#collapsing-the-top-of-the-panel). |
 | `Preset:` | A combo of the views saved in this project, with `Save` and `Delete`. Choosing one applies it immediately. Empty, and disabled apart from the combo, when no project is open. See [Presets: a view you named](#presets-a-view-you-named). **On a wide panel `List:` shares this row**, at its right-hand end. |
 | `Visibility rule:` | Two radio buttons, `Hide checked classes` and `Show only checked classes`. The panel opens on the second one -- see [Opening the panel hides everything](#opening-the-panel-hides-everything) and [below](#hide-checked-classes-vs-show-only-checked-classes). **On a wide panel the cell-display note shares this row**, at its right-hand end. |
 | `Dense cells? Try View -> Cell Display` | A line of text, and a pointer rather than a control -- it names a menu and stops there. **Cell display is QuPath's own setting and has nothing to do with classes**, but it can make cells look wrong in a way that is easily blamed on this panel, which is the only reason a line about it appears here at all. Hover it for the rest: which of the four options to try, and what changes when you do. It is drawn a little dimmer than the controls, with the menu path in italics. On a wide panel it sits at the right-hand end of the `Visibility rule:` row, after a vertical bar, and when there is not room for all of it only `Dense cells? Try` shortens -- the menu path always stays whole; on a narrow one it has a line of its own below the radios. See [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn). |
@@ -339,6 +340,28 @@ One case where that button is not there: if you used **QuPath's** own undock ges
 docked tab, the tab is floating in a window QuPath owns rather than one this extension owns,
 so the button hides itself rather than offering a move it cannot make. Drag the tab back into
 the analysis pane and it reappears.
+
+### Collapsing the top of the panel
+
+Once the rule, the `List` scope and any `Find` text are set, the rows that hold them are
+mostly taking space from the lists. **`Collapse`**, at the left of the `Image:` row, hides
+them: `Preset:`, `Visibility rule:` (with the cell-display note), `List:`, `Find:` and
+`Exact matches only`. What is left is the `Image:` row, the two lists and everything below
+them. **`Expand`** puts them back.
+
+Collapsing changes what you see, not what is in force:
+
+- every rule, the visibility mode and `Exact matches only` keep working exactly as before;
+- **a `Find` filter stays applied.** The list headers still say so -- `(5 of 28)` -- so a
+  short list is never unexplained, but the filter text itself is out of sight until you
+  expand;
+- the **`Exact matches only` warning does not collapse.** It is the only explanation for a
+  greyed-out component list, so it stays on screen whenever that setting is on;
+- the status strip at the bottom, including `[!] Every object is hidden`, is untouched.
+
+**`Ctrl+F` (`Cmd+F` on macOS) expands the panel** as it jumps to `Find`, so the shortcut
+never types into a field you cannot see. The panel remembers whether it was collapsed, across
+restarts.
 
 ### The panel changes shape with its width
 
@@ -1495,7 +1518,7 @@ the longest recount there is, and it used to run in total silence behind stale n
 
 | Key | Where | Action |
 |---|---|---|
-| `Ctrl+F` / `Cmd+F` | anywhere in the panel | focus `Find` |
+| `Ctrl+F` / `Cmd+F` | anywhere in the panel | focus `Find`, expanding the top of the panel first if it is collapsed |
 | `Escape` | in `Find` | clear the filter, keep focus |
 | `Up` / `Down` | in a list | move between rows |
 | `Space` | in a list | check or uncheck the focused row |
@@ -1723,6 +1746,7 @@ difference decides what comes back after a restart.
 | `List` scope | the panel | yes | the panel |
 | Divider position between the two lists | the panel | yes | separately for the wide and narrow layouts |
 | `Active rules` expanded or collapsed | the panel | yes | the panel |
+| Top of the panel collapsed or expanded | the panel | yes | the panel |
 | `Include classes not in this image` | the panel | yes | the panel |
 | Sort column and direction, per list | the panel | **no** | survives docking and undocking within a session, but not a restart |
 | `Find` text | -- | **no**, deliberately | -- |

@@ -47,6 +47,7 @@ public final class ClassVisibilityPreferences {
     private static DoubleProperty wideDividerProperty;
     private static DoubleProperty narrowDividerProperty;
     private static BooleanProperty rulesExpandedProperty;
+    private static BooleanProperty headerExpandedProperty;
     private static BooleanProperty includeEmptyClassesProperty;
     private static BooleanProperty highlightNewControlsProperty;
     private static BooleanProperty pulseComponentMatchesProperty;
@@ -77,6 +78,8 @@ public final class ClassVisibilityPreferences {
                 PREFIX + "narrowDivider", 0.55);
         rulesExpandedProperty = PathPrefs.createPersistentPreference(
                 PREFIX + "rulesExpanded", false);
+        headerExpandedProperty = PathPrefs.createPersistentPreference(
+                PREFIX + "headerExpanded", true);
         includeEmptyClassesProperty = PathPrefs.createPersistentPreference(
                 PREFIX + "includeEmptyClasses", false);
         // On by default: the control it teaches is inert below two checked components and says so
@@ -167,6 +170,15 @@ public final class ClassVisibilityPreferences {
     public static BooleanProperty rulesExpandedProperty() {
         ensureInstalled();
         return rulesExpandedProperty;
+    }
+
+    /**
+     * @return whether the panel's preset, visibility-rule and List / Find rows are shown. Off
+     *         leaves the image row and the lists, for more list height.
+     */
+    public static BooleanProperty headerExpandedProperty() {
+        ensureInstalled();
+        return headerExpandedProperty;
     }
 
     /** @return whether project classes with no objects in this image are listed too. */

@@ -4,6 +4,21 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.3.1
+
+### The top of the panel collapses
+
+A **`Collapse`** button at the left of the `Image:` row hides the `Preset:`,
+`Visibility rule:`, `List:` and `Find:` rows, leaving the image name, the two lists and the
+controls below them -- more height for the lists once the rule is set. **`Expand`** brings
+them back, and the panel remembers which you chose across restarts.
+
+Nothing in force changes when you collapse: rules, the mode and `Exact matches only` keep
+working, and a `Find` filter stays applied (the list headers still show `N of M`). The
+`Exact matches only` warning stays on screen while that setting is on, because it is the only
+explanation for a greyed-out component list. `Ctrl+F` / `Cmd+F` expands the panel before
+jumping to `Find`, so it never types into a hidden field.
+
 ## 0.3.0
 
 ### Class rows show which of them your components reach

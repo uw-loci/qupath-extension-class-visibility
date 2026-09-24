@@ -255,6 +255,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final TextField findField = new TextField();
     private final Button clearFindButton = new Button(Strings.get("button.findClear"));
     private final Button helpButton = new Button(Strings.get("button.help"));
+    /**
+     * Collapses the preset, visibility-rule and List / Find rows so the lists get the height.
+     * Lives on the image row, which never collapses, so expanding costs no extra line.
+     */
+    private final Button headerToggle = new Button();
 
     private final Button undoButton = new Button(Strings.get("button.undo"));
     private final Button resetButton = new Button(Strings.get("button.reset"));
@@ -531,7 +536,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * when the panel is first revealed.
      */
     public void focusFind() {
-        findField.requestFocus();
+        // Never into a collapsed field: typing would filter the lists with nothing on screen
+        // saying so.
+        if (ClassVisibilityPreferences.headerExpandedProperty().get()) {
+            findField.requestFocus();
+        }
     }
 
     /**
@@ -720,7 +729,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         helpButton.setTooltip(new Tooltip(Strings.get("tooltip.button.help")));
         helpButton.setAccessibleText(Strings.get("tooltip.button.help"));
         helpButton.setOnAction(e -> showHelpDialog());
-        imageRow.getChildren().setAll(imageLabel, helpButton, surfaceButton);
+        headerToggle.setOnAction(e -> ClassVisibilityPreferences.headerExpandedProperty().set(
+                !ClassVisibilityPreferences.headerExpandedProperty().get()));
+        imageRow.getChildren().setAll(headerToggle, imageLabel, helpButton, surfaceButton);
         imageRow.setAlignment(Pos.CENTER_LEFT);
 
         presetLabel.setLabelFor(presetCombo);
@@ -837,7 +848,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // would come off a user-authored preset name that genuinely can be long. Pinning it also
         // gives the merged row a computable floor, which is what makes the narrow profile's
         // stacking decision a measurement rather than a guess.
-        keepFullyReadable(helpButton, surfaceButton,
+        keepFullyReadable(headerToggle, helpButton, surfaceButton,
                 presetLabel, presetSaveButton, presetDeleteButton,
                 turnOffExact, exactCheck,
                 modeLabel, hideRadio, showOnlyRadio, cellDisplaySeparator,
@@ -847,6 +858,15 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // explaining lives in that row. A warning rendered above the control it refers to reads
         // as being about the radios instead.
         VBox header = new VBox(GAP, imageRow, presetRow, modeBox, filterBox, exactWarningBox);
+        // The exact-match warning is deliberately not collapsible: it is the only explanation for
+        // a greyed-out component list, and hiding it would leave that looking broken.
+        BooleanProperty expanded = ClassVisibilityPreferences.headerExpandedProperty();
+        for (Node collapsible : List.of(presetRow, modeBox, filterBox)) {
+            collapsible.visibleProperty().bind(expanded);
+            collapsible.managedProperty().bind(expanded);
+        }
+        expanded.addListener((obs, was, is) -> updateHeaderToggle());
+        updateHeaderToggle();
         header.setPadding(new Insets(0, 0, GAP, 0));
         setTop(header);
 
@@ -1303,6 +1323,18 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         Dialogs.showMessageDialog(Strings.get("help.title"), Strings.get("help.body"));
     }
 
+    private void updateHeaderToggle() {
+        boolean expanded = ClassVisibilityPreferences.headerExpandedProperty().get();
+        String tip = expanded
+                ? Strings.get("tooltip.button.headerCollapse")
+                : Strings.get("tooltip.button.headerExpand");
+        headerToggle.setText(expanded
+                ? Strings.get("button.headerCollapse")
+                : Strings.get("button.headerExpand"));
+        headerToggle.setTooltip(new Tooltip(tip));
+        headerToggle.setAccessibleText(tip);
+    }
+
     private void applyProfileLayout() {
         if (wideProfile) {
             applyWideProfile();
@@ -1492,6 +1524,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         KeyCombination find = new KeyCodeCombination(KeyCode.F, KeyCombination.SHORTCUT_DOWN);
         addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (find.match(event)) {
+                ClassVisibilityPreferences.headerExpandedProperty().set(true);
                 findField.requestFocus();
                 findField.selectAll();
                 event.consume();

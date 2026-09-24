@@ -214,8 +214,8 @@ Top to bottom, the panel is:
 | `List:` | Which objects are counted and listed -- `Detections`, `Cells`, `Annotations` or `All objects`. It chooses what you *see in this panel*, never what gets hidden. See [the next section](#list-chooses-what-you-see-here-not-what-gets-hidden). On a wide panel it sits at the end of the `Preset:` row; on a narrow one it has a line of its own, above `Find:`. |
 | `Find:` | One filter field over both lists. Case-insensitive, matches anywhere in the name, and the matched text is shown in **bold** in the rows that survive. **On a wide panel `Exact matches only` shares this row**, at its right-hand end. |
 | `Exact matches only` | A QuPath-wide setting. While it is on, the whole component half of the panel is greyed out. See [below](#one-qupath-setting-can-switch-the-component-list-off). At the end of the `Find:` row on a wide panel; on its own line below `Find:` on a narrow one. |
-| Classes list | Headed `Classes on detections in this image (28)`. One row per class present in the image, with a checkbox, a **colour swatch** and the name, then an **`Affects`** -- how many objects a click on the row would actually hide or show. Sorted by `Affects` descending by default. A **`Count`** column, objects carrying exactly this class, is off by default and one click away in the column menu button; the two are different numbers and the gap is the point -- see [What a checked class row acts on](#what-a-checked-class-row-acts-on). The **checkbox column's header holds a check box of its own**, which checks or unchecks everything currently listed. |
-| Components list | Headed `Anything containing these components (17)`, which is what checking a row does. One row per component, with a checkbox, the name and a `Count`. Sorted by name, alphabetically, by default. A **`Spread`** column is off by default, in the same column menu button -- see [The `Spread` column](#the-spread-column-how-many-classes-a-component-covers). |
+| Classes list | Headed `Classes on detections in this image (28)`. One row per class present in the image, with a checkbox, a **colour swatch** and the name, then a **`Count`** -- how many objects carry exactly this class. Sorted by `Count` descending by default. An **`Affects`** column, how many objects a click on the row would actually hide or show, is off by default and one click away in the column menu button (`+`); the two are different numbers -- see [What a checked class row acts on](#what-a-checked-class-row-acts-on). Hover a `Count` to see when a click reaches more than it. The **checkbox column's header holds a check box of its own**, which checks or unchecks everything currently listed. |
+| Components list | Headed `Anything containing these components (17)`, which is what checking a row does. One row per component, with a checkbox, the name and a **`Total`** -- every object carrying that component anywhere in its class, so for `CD3` the whole of `CD3`, `CD3: CD8`, `CD3: CD8: PD1` and so on. It is deliberately not called `Count`, which in the classes list means one exact class. Sorted by name, alphabetically, by default. A **`Spread`** column is off by default, in the same column menu button -- see [The `Spread` column](#the-spread-column-how-many-classes-a-component-covers). |
 | `Checked components combine as:` | The `Any` / `All` radios. Only meaningful from two checked components onward. |
 | `Active rules` | An expander listing every rule in force, including rules with no row in the lists above. Its title carries the count -- `Active rules (3)` -- without opening it, and the sentence saying what that means in words is inside. See [See every rule in force](#see-every-rule-in-force-including-invisible-ones). |
 | Status strip | Always visible, and it holds the things you cannot afford to miss: the `[!] Every object is hidden` warning, the note that fires when you check a component that is in nearly every class, and the buttons -- `Undo`, `Reset all`, `Switch to "Hide checked classes"`. `Undo` is one step deep and always names the step -- `Undo "Check CD8"`, `Undo "Show only CD3: CD8"`, `Undo "Reset all"` -- so it is never a guess. Every action reaches it: single rows, the header check box, a solo, an applied preset, and `Reset all` alike. When there is nothing to say and no button to offer, the strip leaves the layout rather than holding a blank line open. The routine "what is in force" sentence is inside `Active rules`, above it. |
@@ -390,11 +390,9 @@ There is one panel, and it lays itself out two ways depending on how much width 
 The two thresholds differ on purpose, so the layout does not flicker back and forth while
 you drag a window edge or the analysis pane's divider through the switch point.
 
-No column is dropped as the panel narrows. `Affects` used to be, back when the classes list
-carried four columns and long class names had nothing left; with `Count` off by default the
-names have that room anyway, and `Affects` is the one number on the row that says what a click
-will do. If a class name is still being cut off, widen the panel or drag the divider between
-the two lists.
+No column is dropped as the panel narrows. Each list shows one number by default, so long
+class names have room. If a class name is still being cut off, widen the panel or drag the
+divider between the two lists.
 
 ### If you docked it and it seems to have gone
 
@@ -457,7 +455,7 @@ usually is -- five or six things, which is what "combinatorial" means.
 
 Say your image carries these six classes, and you check the row `CD3: CD8`:
 
-| Class in the image | `Count` (off by default) | Acted on, by default | With `Exact matches only` on | Why |
+| Class in the image | `Count` | Acted on, by default | With `Exact matches only` on | Why |
 |---|---|---|---|---|
 | `CD3: CD8` | 412 | yes | yes | it is that class |
 | `CD8: CD3` | 51 | yes | yes | order is never significant |
@@ -475,22 +473,23 @@ by default:
 
 | Column | What it counts | On screen |
 |---|---|---|
-| **`Affects`** | objects a click on this row would hide or show **right now** -- 2,547 | yes |
-| **`Count`** | objects carrying **exactly** this class -- 412 | off by default |
+| **`Count`** | objects carrying **exactly** this class -- 412 | yes |
+| **`Affects`** | objects a click on this row would hide or show **right now** -- 2,547 | off by default |
 
-**`Affects` is the one you get**, because it is the one that answers the question you are
-about to act on. `Count` is one click away in the **column menu button** -- the small button
-at the right-hand end of the table's header row -- and turning it on is worth doing exactly
-when you want to see the gap above for yourself, on your own data. Nothing about either number
-changed when `Count` was moved off the default view.
+**`Count` is the one you get**, because "how many `CD3: CD8` cells are there" is the question
+most people read this list to answer. Where a click would reach further than that, **hover the
+`Count`**: its tooltip says how many objects the click acts on and why. Rows without that
+tooltip have no gap.
+
+`Affects` is one click away in the **column menu button** -- the small `+` at the right-hand
+end of the table's header row. Turn it on when you are about to build a view from class rows
+and want the gap in front of you on every row at once.
 
 `Affects` follows the current settings rather than describing an idea: turn on
 `Exact matches only` and it drops to match `Count`, because that is genuinely what the click
 would then do. **It renders in bold whenever it is larger than `Count`** -- the panel saying
-*this row reaches further than it looks* -- and that emphasis works whether or not you have the
-`Count` column on, which is what makes hiding that column safe. Turning `Count` on is how you
-see by how much. When the two are equal `Affects` is plain, and on a small project they will
-usually be equal all the way down the list.
+*this row reaches further than it looks*. When the two are equal `Affects` is plain, and on a
+small project they will usually be equal all the way down the list.
 
 **With `Exact matches only` on, nothing in the column is bold.** That is not a rendering
 fault: a click then acts on the class itself and nothing else, so `Affects` equals `Count` on
@@ -501,8 +500,7 @@ every row. The column's hover text says the same.
 figure legend usually asks -- but take a figure's numbers from a measurement table, which
 visibility never touches, rather than from either column here.
 
-(Neither column is dropped when the panel gets narrow. `Affects` used to be, and is not any
-more -- it is the number the row is about.)
+(Neither column is dropped when the panel gets narrow.)
 
 **`Exact matches only` narrows a class row to the class itself.** That checkbox is QuPath's
 own setting rather than the panel's, and it has a second effect you probably do not want as a
@@ -553,7 +551,7 @@ names rather than characters.
 ### The `Spread` column: how many classes a component covers
 
 Each component row can carry a **`Spread`** figure such as `6/28`: how many of this image's
-classes contain that component. It is not an object count -- the `Count` column is the object
+classes contain that component. It is not an object count -- the `Total` column is the object
 count.
 
 **`Spread` is off by default**, in the **column menu button** at the right-hand end of the
@@ -661,7 +659,7 @@ usually convenient and occasionally surprising.
 
 **A zero `Count` does not mean the row does nothing.** Its `Affects` can be large: no object
 carries `CD3: CD8` in this image, but a rule for it still reaches `CD3: CD8: PD1` and every
-other class here that carries both parts. That is the pair of columns earning their keep --
+other class here that carries both parts. Hover the `0` and its tooltip says so --
 `Count 0` with `Affects 2,135` is a row worth reading twice before you click it.
 
 Two reasons to turn it on: a rule for a class that is absent from this image is perfectly
@@ -718,7 +716,11 @@ They diverge from two components onward, which is precisely when people start wo
 they got more (or fewer) cells than they expected.
 
 The control is labelled **`Checked components combine as:`**, and its label spells out the
-current choice as you go, e.g. `All -- CD3 and CD8 together`.
+current choice as you go, e.g. `All -- CD3 and CD8 together`. **With two or more checked,
+each choice also says how many objects it would reach** -- `Any -- CD3, or CD8, or both
+(9,812 objects)` against `All -- CD3 and CD8 together (1,204 objects)` -- so you can compare
+before you pick. Each component row's `Total` is that component alone, and under `All` the
+combined number can be far smaller than any single row's.
 
 **The first time it applies in a session, it glows.** Because the control is inert below two
 components, the moment you check a second one is the only moment at which it can be connected
@@ -833,7 +835,7 @@ uncheck that leaves other components still checked and an `Any` / `All` switch w
 more checked. It does not happen when the counts refresh, when you type in `Find`, or when
 you switch image, because none of those changed what your components reach.
 
-The classes list stays sorted by `Affects`, so ringed rows are usually scattered down it
+The classes list stays sorted by `Count`, so ringed rows are usually scattered down it
 rather than grouped. Scroll, or type the component into `Find`, to walk through them.
 
 If you would rather not have the pulse, untick
@@ -1859,10 +1861,11 @@ changes it.
 
 **The counts do not match my measurement table.**
 Check the `List` scope. `Detections` is the default, and a measurement table showing cells,
-annotations or every object will not agree with it. `Count` is also off by default in the
-classes list -- the column on screen is `Affects`, which is a different number, and the two
-are explained in [`Count` and `Affects`](#count-and-affects). If the column header reads
-`Count (stale)`, a recount is on its way and the numbers you are reading are the previous
+annotations or every object will not agree with it. If you turned on `Affects` in the classes list,
+that is a different number from `Count` -- see [`Count` and `Affects`](#count-and-affects).
+The components list's `Total` is not a per-class number either: it counts every object
+carrying the component anywhere in its class. If a column header reads
+`Count (stale)` or `Total (stale)`, a recount is on its way and the numbers you are reading are the previous
 run's.
 
 **The toolbar button is missing.**

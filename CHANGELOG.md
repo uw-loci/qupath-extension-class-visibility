@@ -4,6 +4,26 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.3.3
+
+### The lists show counts by default
+
+The numbers now answer "how many are there" first, which is what most people read the lists
+for:
+
+- **Classes list:** `Count` -- objects carrying exactly this class -- is on screen and sorted
+  descending by default. `Affects` (what a click on the row acts on) is off by default, one
+  click away in the table's `+` menu. Where a click reaches more objects than the `Count`,
+  **hovering the `Count` says how many and why**.
+- **Components list:** the number column is now **`Total`**, not `Count`. It was always every
+  object carrying the component anywhere in its class -- all `CD3` objects, whatever else they
+  carry -- but it shared its name, and its hover text, with the classes list's exact count.
+  The hover text claimed *"objects with exactly this class"*, which was wrong for components.
+- **`Any` / `All`:** with two or more components checked, each choice now shows how many
+  objects it would reach, e.g. `All -- CD3 and CD8 together (1,204 objects)`. No row showed
+  the combined number before, and under `All` it can be far smaller than any single
+  component's `Total`.
+
 ## 0.3.2
 
 ### A quieter log

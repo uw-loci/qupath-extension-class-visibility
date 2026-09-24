@@ -294,4 +294,19 @@ class VisibilityRuleModelTest {
         model.setClassSelected(pc("CD3"), true);
         assertThat(model.isApplying()).isFalse();
     }
+
+    @Test
+    void componentEntriesForEitherCombination() {
+        model.setComponentSelected("CD8", true);
+        model.setComponentSelected("CD3", true);
+        Set<PathClass> before = new LinkedHashSet<>(selected);
+
+        assertThat(model.componentEntriesFor(VisibilityRuleModel.Combination.ANY))
+                .containsExactlyInAnyOrder(pc("CD3"), pc("CD8"));
+        assertThat(model.componentEntriesFor(VisibilityRuleModel.Combination.ALL))
+                .as("the same sorted composite the model writes under All")
+                .containsExactly(PathClass.fromCollection(List.of("CD3", "CD8")));
+        assertThat(selected).isEqualTo(before);
+        assertThat(model.getCombination()).isEqualTo(VisibilityRuleModel.Combination.ANY);
+    }
 }

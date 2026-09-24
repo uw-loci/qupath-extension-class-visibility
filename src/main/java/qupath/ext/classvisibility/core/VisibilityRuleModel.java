@@ -470,10 +470,20 @@ public final class VisibilityRuleModel {
      *         a single sorted composite under {@code All}
      */
     private Set<PathClass> componentEntries() {
+        return componentEntriesFor(combination);
+    }
+
+    /**
+     * @param as the combination to build for, which need not be the one in force
+     * @return the entries the checked components would write under {@code as}. Lets the panel
+     *         state what each choice would reach before the user makes it, from the same entries
+     *         a click would write.
+     */
+    public Set<PathClass> componentEntriesFor(Combination as) {
         if (componentSelections.isEmpty()) {
             return Set.of();
         }
-        if (combination == Combination.ALL && componentSelections.size() > 1) {
+        if (as == Combination.ALL && componentSelections.size() > 1) {
             PathClass composite = compositeEntry();
             return composite == null ? Set.of() : Set.of(composite);
         }

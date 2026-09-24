@@ -356,16 +356,23 @@ already been got wrong once somewhere.
    it is what stops a degenerate component like `positive` reading as one. The column is off
    by default as of 0.2.0; the warning it carries also reaches the user through `status.s9`
    and `tooltip.row.component.coverage`, which is what makes hiding it safe.
-5. **A count shown beside a control must be the count that control acts on.** The class list
-   shows `Affects` (objects a click would move, right now, under the current
-   `Exact matches only` setting) and hides `Count` (objects carrying exactly this class)
-   behind the column menu. `ClassCensus.matchedObjectsForClass` mirrors
-   `OverlayOptions.isPathClassHidden` including its `isDerivedClass()` guard; if that
-   predicate ever drifts from QuPath's, `Affects` becomes a confident lie, which is worse than
-   the single-column state it replaced (finding S1). The component list keeps `Count` and has
-   no `Affects`, because `countForComponent` is already "objects whose class contains this
-   component" -- the same predicate a component rule matches on, so the two would be one
-   number printed twice.
+5. **A count shown beside a control that acts on a different number must say so where it is
+   read.** Since 0.3.3 the class list shows `Count` (objects carrying exactly this class) by
+   default and hides `Affects` (objects a click would move, right now, under the current
+   `Exact matches only` setting) behind the column menu -- the user's call (2026-09-24): the
+   exact count is what people read the list for. That reverses the 0.2.0 default made for
+   finding S1, so S1's concern is now met at the cell: `ClassCountCell` carries a tooltip with
+   the `Affects` number on every row where it exceeds `Count`, and no tooltip where they agree.
+   Do not remove that tooltip without restoring `Affects` to the default view.
+   `ClassCensus.matchedObjectsForClass` mirrors `OverlayOptions.isPathClassHidden` including
+   its `isDerivedClass()` guard; if that predicate ever drifts from QuPath's, `Affects` becomes
+   a confident lie. The component list's number is **`Total`**, never `Count`:
+   `countForComponent` is "objects whose class contains this component", which is both the
+   number people want ("all CD3") and the number a component rule acts on, but it is not the
+   exact-class number the classes list calls `Count`, and until 0.3.3 it shared that name and
+   that tooltip. The combined reach of the checked components is on the `Any` / `All` labels,
+   computed from `VisibilityRuleModel.componentEntriesFor` so it is exactly what a click on
+   either radio would write.
 
    Since a hidden column is only reachable through the table's own menu, **every column the
    menu offers must carry `setText`**. `TableViewSkinBase` binds each menu item to

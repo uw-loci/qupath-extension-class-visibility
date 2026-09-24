@@ -125,8 +125,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** Below this pane width, lay out narrow (stacked). The gap is deliberate hysteresis. */
     private static final double NARROW_THRESHOLD = 580;
 
-    /** Column id of the count column in both tables, so its header can be found after a reorder. */
+    /** Column id of the class table's count column, so its header can be found after a reorder. */
     private static final String COUNT_COLUMN_ID = "countColumn";
+
+    /** Column id of the component table's total column, for the same reason. */
+    private static final String TOTAL_COLUMN_ID = "totalColumn";
 
     /** Coverage emphasis is suppressed entirely below this many classes. */
     private static final int COVERAGE_EMPHASIS_MIN_CLASSES = 5;
@@ -982,15 +985,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countColumn.setPrefWidth(84);
         countColumn.setMinWidth(60);
         countColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
-        countColumn.setCellFactory(col -> new CountCell<>(ClassRow::count));
+        countColumn.setCellFactory(col -> new ClassCountCell());
         countColumn.setComparator(Comparator.comparingLong(ClassRow::count));
         countColumn.setId(COUNT_COLUMN_ID);
         nameAndExplain(countColumn, Strings.get("column.count"), Strings.get("tooltip.column.count"));
-        // Off by default. Affects is the number that answers "what will this click do", so with
-        // both columns on screen the class table showed two numbers where one of them is a trap
-        // (external tester, 2026-09-01: "too many columns"). Count stays one click away in the
-        // table's own menu button, and the Affects tooltip names it as the comparison.
-        countColumn.setVisible(false);
+        // On by default since 0.3.3: how many CD3: CD8 cells there are is the number people read
+        // this list for (user, 2026-09-24). Where a click reaches further than that, the Count
+        // cell's own tooltip says by how much, and Affects is one click away in the menu button.
 
         // The truth about the click. The Count column answers "how many objects carry this exact
         // class"; with "Exact matches only" off -- the shipped default -- a click on the row acts
@@ -1005,6 +1006,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         affectsColumn.setComparator(Comparator.comparingLong(
                 (ClassRow row) -> affectedObjects(row.pathClass())));
         nameAndExplain(affectsColumn, Strings.get("column.affects"), Strings.get("tooltip.column.affects"));
+        affectsColumn.setVisible(false);
 
         // No "Only" column. It cost 52px of a column in which "FoxP3 (Opal 570): 1+: ..." was
         // already being cut off, to save one click -- and once checking a row means "show this"
@@ -1038,8 +1040,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // alphabetical sort buries a long derived name among its near-identical siblings. On
         // Affects rather than Count since 0.2.0, because Count is now hidden by default and a
         // table sorted by a column nobody can see is a table sorted for no stated reason.
-        affectsColumn.setSortType(TableColumn.SortType.DESCENDING);
-        classTable.getSortOrder().add(affectsColumn);
+        countColumn.setSortType(TableColumn.SortType.DESCENDING);
+        classTable.getSortOrder().add(countColumn);
 
         // A sentence rather than a control name, and the longest string in the panel. It wraps
         // instead of being pinned to its preferred width -- pinning it would make the whole class
@@ -1088,8 +1090,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
         countColumn.setCellFactory(col -> new CountCell<>(ComponentRow::count));
         countColumn.setComparator(Comparator.comparingLong(ComponentRow::count));
-        countColumn.setId(COUNT_COLUMN_ID);
-        nameAndExplain(countColumn, Strings.get("column.count"), Strings.get("tooltip.column.count"));
+        // Not "Count": that word means "exactly this class" in the class list, and this number is
+        // every object carrying the component anywhere in its class (user, 2026-09-24).
+        countColumn.setId(TOTAL_COLUMN_ID);
+        nameAndExplain(countColumn, Strings.get("column.total"), Strings.get("tooltip.column.total"));
 
         componentTable.getColumns().setAll(List.of(checkColumn, nameColumn, spreadColumn, countColumn));
         installSoloGestures(componentTable, ComponentRow::name, this::soloComponent);
@@ -2258,19 +2262,20 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         componentHeader.setText(filtered
                 ? Strings.format("header.components.filtered", componentShown, componentTotal)
                 : Strings.format("header.components", componentTotal));
-        String countHeaderText = countsStale
+        setColumnText(classTable, COUNT_COLUMN_ID, countsStale
                 ? Strings.get("column.count.stale")
-                : Strings.get("column.count");
-        setCountHeaderText(classTable, countHeaderText);
-        setCountHeaderText(componentTable, countHeaderText);
+                : Strings.get("column.count"));
+        setColumnText(componentTable, TOTAL_COLUMN_ID, countsStale
+                ? Strings.get("column.total.stale")
+                : Strings.get("column.total"));
     }
 
-    private static void setCountHeaderText(TableView<?> table, String text) {
+    private static void setColumnText(TableView<?> table, String id, String text) {
         // By id, not by position: both tables let the user reorder their columns, and addressing
         // "the last column" would eventually put "Count (stale)" over the wrong header. On the
         // column's own text since 0.2.0, so the table's menu button names it too.
         for (TableColumn<?, ?> column : table.getColumns()) {
-            if (COUNT_COLUMN_ID.equals(column.getId())) {
+            if (id.equals(column.getId())) {
                 column.setText(text);
                 return;
             }
@@ -2348,9 +2353,17 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
                         selected.get(0), selected.get(1), selected.get(2), n - 3);
             }
         }
+        boolean disabled = n < 2;
+        // Each component row's Total is that component alone. What a combination reaches is the
+        // number that decides between the two, and under All it can be far smaller than any row.
+        if (!disabled && !countsUnknown && !census.isEmpty()) {
+            anyText = Strings.format("combination.withCount", anyText, COUNTS.format(
+                    objectsReachedBy(model.componentEntriesFor(VisibilityRuleModel.Combination.ANY))));
+            allText = Strings.format("combination.withCount", allText, COUNTS.format(
+                    objectsReachedBy(model.componentEntriesFor(VisibilityRuleModel.Combination.ALL))));
+        }
         anyRadio.setText(anyText);
         allRadio.setText(allText);
-        boolean disabled = n < 2;
         anyRadio.setDisable(disabled);
         allRadio.setDisable(disabled);
         // JavaFX shows no tooltip on a disabled node, so tooltip.combination.disabled could never
@@ -2444,6 +2457,21 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         if (combinationBox != null && combinationBox.getEffect() == combinationHintGlow) {
             combinationBox.setEffect(null);
         }
+    }
+
+    /**
+     * @param entries rule entries
+     * @return how many objects in the census those entries reach, by the viewer's predicate
+     */
+    private long objectsReachedBy(java.util.Collection<PathClass> entries) {
+        boolean exact = options.getUseExactSelectedClasses();
+        long total = 0L;
+        for (PathClass candidate : census.classes()) {
+            if (ComponentMatchHighlight.covers(entries, candidate, exact)) {
+                total += census.countForClass(candidate);
+            }
+        }
+        return total;
     }
 
     /**
@@ -3148,6 +3176,39 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             setFont(reachesMore
                     ? Font.font(Font.getDefault().getFamily(), FontWeight.BOLD, Font.getDefault().getSize())
                     : Font.getDefault());
+        }
+    }
+
+    /**
+     * The class table's Count: objects of exactly this class. Where a click on the row reaches
+     * more than that, the tooltip says how many, because the Affects column that shows it is off
+     * by default.
+     */
+    private final class ClassCountCell extends TableCell<ClassRow, ClassRow> {
+
+        private ClassCountCell() {
+            setStyle("-fx-alignment: CENTER-RIGHT;");
+        }
+
+        @Override
+        protected void updateItem(ClassRow item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setTooltip(null);
+                return;
+            }
+            if (countsUnknown) {
+                setText("--");
+                setTooltip(null);
+                return;
+            }
+            setText(COUNTS.format(item.count()));
+            long affects = affectedObjects(item.pathClass());
+            setTooltip(affects > item.count()
+                    ? new Tooltip(Strings.format("tooltip.cell.countReachesMore",
+                            COUNTS.format(item.count()), COUNTS.format(affects)))
+                    : null);
         }
     }
 

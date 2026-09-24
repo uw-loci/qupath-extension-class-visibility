@@ -27,6 +27,8 @@ import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.Separator;
+import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Skin;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableCell;
@@ -53,6 +55,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
@@ -281,6 +284,13 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * hand back the line the move just saved, and then some.</p>
      */
     private final Label cellDisplayNote = new Label(Strings.get("note.cellDisplay"));
+    /** The menu path, italic, carried as the note's graphic so it survives the text truncating. */
+    private final Text cellDisplayMenuPath = new Text(Strings.get("note.cellDisplay.menu"));
+    /**
+     * Sets the note apart from the radios in the wide profile, where it shares their row. Without
+     * it the note read as the tail of the second radio's label (user, 2026-09-24).
+     */
+    private final Separator cellDisplaySeparator = new Separator(Orientation.VERTICAL);
     /**
      * The standing "what is in force" sentence, inside the <i>Active rules</i> expander. Only the
      * everything-hidden warning stays on the always-visible strip; see {@link #updateStatus()}.
@@ -767,6 +777,17 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         cellDisplayTooltip.setMaxWidth(360);
         cellDisplayNote.setTooltip(cellDisplayTooltip);
         cellDisplayNote.setAccessibleText(Strings.get("tooltip.cellDisplay"));
+        // The path is the graphic, not part of the text, so only the lead-in is ever cut: a
+        // Labeled truncates its text and keeps its graphic whole. That is the same priority the
+        // note already had -- the menu path is the half that cannot be guessed.
+        cellDisplayMenuPath.setFont(Font.font(Font.getDefault().getFamily(), FontPosture.ITALIC,
+                Font.getDefault().getSize()));
+        cellDisplayMenuPath.fillProperty().bind(cellDisplayNote.textFillProperty());
+        cellDisplayNote.setGraphic(cellDisplayMenuPath);
+        cellDisplayNote.setContentDisplay(ContentDisplay.RIGHT);
+        // Secondary text, dimmed by opacity rather than a colour so it reads in both QuPath
+        // themes without being tuned per theme.
+        cellDisplayNote.setOpacity(0.72);
         HBox.setHgrow(cellDisplayNote, Priority.ALWAYS);
         // Only takes effect in the narrow profile, where this note is stacked inside modeBox
         // among the radios; a VBox margin is ignored while it is a child of the HBox in the wide
@@ -819,7 +840,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         keepFullyReadable(helpButton, surfaceButton,
                 presetLabel, presetSaveButton, presetDeleteButton,
                 turnOffExact, exactCheck,
-                modeLabel, hideRadio, showOnlyRadio,
+                modeLabel, hideRadio, showOnlyRadio, cellDisplaySeparator,
                 scopeLabel, scopeCombo, findLabel, clearFindButton);
 
         // exactWarningBox now sits BELOW filterBox, because since 0.2.1 the checkbox it is
@@ -1302,7 +1323,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // panel exists to operate. The note absorbs everything left over: 251px at the 760px
         // default window, which is its full text, and 156px at the 640px wide threshold, where it
         // truncates to its hook. Measured, both.
-        modeRow.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, cellDisplayNote);
+        modeRow.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, cellDisplaySeparator,
+                cellDisplayNote);
         modeBox.getChildren().setAll(modeRow);
 
         // Two rows, and the point of the second one is where the slack goes rather than the row

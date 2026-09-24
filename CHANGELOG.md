@@ -31,6 +31,15 @@ The pulse has its own switch, **Extensions > Class Visibility >
 feedback. The switch stops the motion only; the steady ring always stays. Hovering a ringed
 check box explains it, and screen readers announce the row as already covered.
 
+### The cell-display note stands apart from the radios
+
+On a wide panel the note sat directly after `Show only checked classes` with nothing between
+them, and read as the end of that radio's label. It now has a **vertical bar** in front of
+it, is drawn **slightly dimmer** than the controls (by opacity, so it works in both themes),
+and shows the menu path in *italics*: `Dense cells? Try` *`View -> Cell Display`*. When the
+row runs short, only `Dense cells? Try` shortens, so the menu path is always there in full.
+The narrow (docked) layout is unchanged apart from the dimming and the italics.
+
 ### The `Affects` column says why it is sometimes bold
 
 The column's hover text now says that the number is bold on rows where it is more than the

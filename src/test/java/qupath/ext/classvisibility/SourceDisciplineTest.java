@@ -389,7 +389,7 @@ class SourceDisciplineTest {
                 .as("it rides the visibility-rule row in the wide profile, last in the row, so "
                         + "it is the control that absorbs what the other three leave over")
                 .contains("modeRow.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, "
-                        + "cellDisplayNote)");
+                        + "cellDisplaySeparator,\n                cellDisplayNote)");
     }
 
     /**

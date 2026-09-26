@@ -482,7 +482,10 @@ already been got wrong once somewhere.
     placeholder and the strip disagreeing on screen is a shipped 0.1.x bug, not a hypothetical.
     `status.s2` and `status.s9` stay on the always-visible strip while the routine status lives
     inside the `Active rules` expander -- burying the only explanation for a blank viewer, or a
-    reply to the click just made, defeats the point of having them.
+    reply to the click just made, defeats the point of having them. The one exception is deliberate:
+    **`Hide options panel` hides the strip too** (0.4.1, user request), because that view is the
+    minimal checkbox-only one. The halo, the placeholder and the toolbar tooltip still carry
+    the state there; `updateStripVisibility()` is the single place that gate lives.
 18. **Solo is one operation, not two.** `VisibilityRuleModel.soloClass` / `soloComponent` set
     the rule contents *and* switch the mode, inside one FX event. Splitting them across layers
     -- the model owning the set, the Pane owning the mode -- leaves a caller who uses only the

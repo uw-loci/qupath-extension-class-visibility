@@ -854,7 +854,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             collapsible.visibleProperty().bind(expanded);
             collapsible.managedProperty().bind(expanded);
         }
-        expanded.addListener((obs, was, is) -> updateHeaderToggle());
+        expanded.addListener((obs, was, is) -> {
+            updateHeaderToggle();
+            updateStripVisibility();
+        });
         updateHeaderToggle();
         header.setPadding(new Insets(0, 0, GAP, 0));
         setTop(header);
@@ -2609,7 +2612,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      * this round is answering.
      */
     private void updateStripVisibility() {
-        boolean anything = statusLabel.isManaged() || !statusButtons.getChildren().isEmpty();
+        // The hidden options panel is the minimal view: checkboxes and nothing else, so the
+        // strip goes with it -- the everything-hidden warning included (user, 2026-09-26).
+        boolean anything = ClassVisibilityPreferences.headerExpandedProperty().get()
+                && (statusLabel.isManaged() || !statusButtons.getChildren().isEmpty());
         statusBox.setVisible(anything);
         statusBox.setManaged(anything);
     }

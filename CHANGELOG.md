@@ -4,6 +4,17 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.4.1
+
+### "Hide options panel"
+
+- The `Collapse` / `Expand` button now reads **`Hide options panel`** / **`Expand options
+  panel`**, which says what it does.
+- Hiding the options now also hides the **status strip** at the bottom, including
+  `[!] Every object is hidden` and its `Switch to "Hide checked classes"`, `Reset all` and
+  `Undo` buttons. The hidden view is the minimal one: the lists and their checkboxes.
+  Expanding the options brings the strip back.
+
 ## 0.4.0
 
 ### The two lists now mean different things

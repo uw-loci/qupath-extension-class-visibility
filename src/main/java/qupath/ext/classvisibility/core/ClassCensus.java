@@ -2,8 +2,10 @@ package qupath.ext.classvisibility.core;
 
 import qupath.lib.objects.classes.PathClass;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -36,21 +38,26 @@ public final class ClassCensus {
 
     /** Census of nothing: no image, no objects in scope, or a harvest that has not run yet. */
     public static final ClassCensus EMPTY = new ClassCensus(
-            Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), 0L);
+            Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), 0L, Set.of());
 
     private final Map<PathClass, Long> classCounts;
     private final Map<String, Long> componentObjectCounts;
     private final Map<String, Integer> componentClassSpread;
     private final long totalObjects;
 
+    /** Every class on any object in the image, whatever the list scope. */
+    private final Set<PathClass> imageClasses;
+
     private ClassCensus(Map<PathClass, Long> classCounts,
                         Map<String, Long> componentObjectCounts,
                         Map<String, Integer> componentClassSpread,
-                        long totalObjects) {
+                        long totalObjects,
+                        Set<PathClass> imageClasses) {
         this.classCounts = classCounts;
         this.componentObjectCounts = componentObjectCounts;
         this.componentClassSpread = componentClassSpread;
         this.totalObjects = totalObjects;
+        this.imageClasses = imageClasses;
     }
 
     /**
@@ -90,7 +97,33 @@ public final class ClassCensus {
                 Collections.unmodifiableMap(classCounts),
                 Collections.unmodifiableMap(componentObjects),
                 Collections.unmodifiableMap(componentSpread),
-                total);
+                total,
+                Collections.unmodifiableSet(new LinkedHashSet<>(classCounts.keySet())));
+    }
+
+    /**
+     * @param classes every class on any object in the image, whatever the list scope; this
+     *                census's own classes are always included
+     * @return a copy of this census that also knows those classes
+     */
+    public ClassCensus withImageClasses(Collection<PathClass> classes) {
+        Set<PathClass> all = new LinkedHashSet<>(classCounts.keySet());
+        if (classes != null) {
+            for (PathClass pathClass : classes) {
+                all.add(pathClass == null ? PathClass.NULL_CLASS : pathClass);
+            }
+        }
+        return new ClassCensus(classCounts, componentObjectCounts, componentClassSpread,
+                totalObjects, Collections.unmodifiableSet(all));
+    }
+
+    /**
+     * @return every class on any object in the image, whatever the list scope. What a component
+     *         rule is expanded against: the rule set is type-blind, so a component checked while
+     *         listing detections must still reach an annotation carrying it.
+     */
+    public Set<PathClass> imageClasses() {
+        return imageClasses;
     }
 
     /** @return every class in this census, Unclassified present as {@link PathClass#NULL_CLASS}. */
@@ -131,8 +164,9 @@ public final class ClassCensus {
     /**
      * How many objects in this census a rule for one class would actually hide or show.
      *
-     * <p>This is deliberately <b>not</b> {@link #countForClass(PathClass)}. With QuPath's default
-     * {@code useExactSelectedClasses = false}, a rule for {@code CD3: CD8} also matches
+     * <p>Equal to {@link #countForClass(PathClass)} while the panel's exact matching is on, and
+     * deliberately not otherwise. With {@code useExactSelectedClasses = false} -- QuPath's default,
+     * and a state something outside the panel can put back -- a rule for {@code CD3: CD8} also matches
      * {@code CD3: CD8: CD4: CD45} and every other class whose parts are a superset -- so on a
      * highly multiplexed image the number of objects a click affects is routinely several times
      * the number in the Count column. A panel that shows a count beside a control acting on a

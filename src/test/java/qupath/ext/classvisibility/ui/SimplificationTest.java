@@ -4,7 +4,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import qupath.ext.classvisibility.core.ClassCensus;
-import qupath.ext.classvisibility.core.VisibilityRuleModel;
 import qupath.lib.gui.viewer.OverlayOptions.ClassVisibilityMode;
 import qupath.lib.objects.classes.PathClass;
 
@@ -86,7 +85,7 @@ class SimplificationTest {
         assertThat(c.matchedObjectsForClass(pc("CD8+"), false))
                 .as("the rule reaches 3,200 objects, so it is not an orphan")
                 .isEqualTo(3200);
-        assertThat(ClassVisibilityPane.ruleStatusText(false, VisibilityRuleModel.RuleSource.CLASS,
+        assertThat(ClassVisibilityPane.ruleStatusText(
                 false, c.matchedObjectsForClass(pc("CD8+"), false) > 0))
                 .isEqualTo(Strings.get("rules.status.derived"));
     }
@@ -103,12 +102,10 @@ class SimplificationTest {
                 pc("CD8+", "PD1+"), 800);
         PathClass composite = pc("CD8+", "GzB+");
         assertThat(c.matchedObjectsForClass(composite, false)).isEqualTo(2400);
-        assertThat(ClassVisibilityPane.ruleStatusText(false,
-                VisibilityRuleModel.RuleSource.COMPONENTS_ALL, true, true))
+        assertThat(ClassVisibilityPane.ruleStatusText(true, true))
                 .as("this one IS a class in the image, so the row above is the better answer")
                 .isEqualTo(Strings.get("rules.status.listed"));
-        assertThat(ClassVisibilityPane.ruleStatusText(false,
-                VisibilityRuleModel.RuleSource.COMPONENTS_ALL, false, true))
+        assertThat(ClassVisibilityPane.ruleStatusText(false, true))
                 .isEqualTo(Strings.get("rules.status.derived"));
     }
 
@@ -117,21 +114,8 @@ class SimplificationTest {
     void aRuleThatReachesNothingIsStillReported() {
         ClassCensus c = census(pc("CD8+", "GzB+"), 2400);
         assertThat(c.matchedObjectsForClass(pc("FoxP3+"), false)).isZero();
-        assertThat(ClassVisibilityPane.ruleStatusText(false, VisibilityRuleModel.RuleSource.CLASS,
-                false, false))
+        assertThat(ClassVisibilityPane.ruleStatusText(false, false))
                 .isEqualTo(Strings.get("rules.status.noMatch"));
-    }
-
-    @Test
-    @DisplayName("Exact matches only outranks everything, because it is why nothing matches")
-    void theExactMatchesOnlyStatusStillWins() {
-        assertThat(ClassVisibilityPane.ruleStatusText(true,
-                VisibilityRuleModel.RuleSource.COMPONENTS_ANY, false, false))
-                .isEqualTo(Strings.get("rules.status.exactOnly"));
-        assertThat(ClassVisibilityPane.ruleStatusText(true, VisibilityRuleModel.RuleSource.CLASS,
-                true, true))
-                .as("a class rule is not limited by it, so it reports normally")
-                .isEqualTo(Strings.get("rules.status.listed"));
     }
 
     // ---------------------------------------------------------------------------------------

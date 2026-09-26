@@ -117,24 +117,49 @@ return matched ? showByDefault : !showByDefault
   'CD3', 'CD3: CD8', 'CD8: CD3'"*. It is **not** a substring match, which is the bug the old
   Groovy script had. Note it runs in **both** directions and is not restricted to
   single-name selections: a selected `CD3: CD8` matches `CD3: CD8: PD1` and every other
-  superset. That is why the classes list is not exact by default, and why the user guide
-  documents [what a checked class row acts on](user-guide.md#what-a-checked-class-row-acts-on)
-  with its own worked table rather than saying "exactly this class". (`containsSelectedClass`
-  only runs its containment test when one of the two classes is derived, so it never widens a
-  single-name-against-single-name comparison that `isSelectedClass` has already decided.)
-- The set is evaluated as an **OR over its elements**; each element requires *all* of its own
-  parts to be present. That is the entire mechanism behind `Any` and `All`:
-  - **`Any`** -- N checked components become N entries, each a single-name `PathClass`.
-  - **`All`** -- N checked components become **one** composite entry via
-    `PathClass.fromCollection(names)` (`PathClass.java:574` / `:595`).
+  superset. (`containsSelectedClass` only runs its containment test when one of the two
+  classes is derived, so it never widens a single-name-against-single-name comparison that
+  `isSelectedClass` has already decided.)
+- The set is evaluated as an **OR over its elements**.
+
+### How the panel uses it -- exact on, components expanded (0.4.0)
+
+With `checkContains` true, a class entry and a component entry are indistinguishable: a
+selected `PanCK` reaches `PanCK: Ki67` whether it was ticked in the classes list or the
+components list, and the two lists did the same thing (user, 2026-09-26). QuPath has one
+matching flag for the whole set, so the two meanings cannot coexist as QuPath entries. The
+panel therefore:
+
+- **turns `useExactSelectedClasses` on**, in `ClassVisibilityPane.beforeMutation()`, right
+  after `VisibilityStateStore.captureIfAbsent(options)` -- so the opening snapshot holds the
+  user's own value and closing restores it. It is not set on open: opening with a class list
+  full of `Set elsewhere` entries does not change what they mean until the user acts;
+- **writes a class row as its harvested instance**, which under exact matching reaches that
+  class alone;
+- **writes a component rule as every known class it covers** (`VisibilityRuleModel.expand`).
+  Coverage is `ClassCensus.ruleMatches(key, candidate, false)` -- the viewer's own containment
+  predicate with exact off -- so the expansion is exactly what QuPath would have matched:
+  - **`Any`** -- the union of each checked component's classes;
+  - **`All`** -- the classes containing every checked component. The sorted
+    `PathClass.fromCollection(names)` composite survives only as the matching key; it is never
+    written.
+
+The known classes come from `ClassCensus.imageClasses()` -- every class on any object in the
+image, whatever the `List` scope, collected by `ClassHarvester.harvest(hierarchy, scope)` in
+the same off-thread walk -- and reach the model through `setKnownClasses` in `onCensus`, which
+re-applies when the expansion changes. QuPath's available (project) classes are deliberately
+**not** included: a class no object carries has nothing to hide, and every such entry would sit
+in `Active rules` as an orphan. A class that appears mid-session is covered at the next
+harvest.
 
 ### The interning trap
 
 `fromCollection` builds the derived class **in iterator order** (`PathClass.java:610-617`),
 so `["CD3","CD4"]` and `["CD4","CD3"]` produce *different* interned instances, and
-`isSelectedClass`'s lookup is identity-sensitive. Feed it a deterministically ordered list and
-**keep the returned reference** for removal. Likewise, a class row must write back the
-harvested `PathClass` instance, never a reconstruction from its name.
+`isSelectedClass`'s lookup is identity-sensitive. Under exact matching that makes them
+different classes, too: a rule for `CD3: CD8` does not reach `CD8: CD3`. Every entry the panel
+writes is therefore a harvested instance -- the class row's own, or a known class from the
+census for a component rule -- never a reconstruction from names.
 
 ### What persists and what does not
 
@@ -184,8 +209,9 @@ Two consequences worth holding on to:
   already bound to `PathPrefs` by `createSharedInstance()`. A second persistent store for
   either would be a second source of truth, and the two would fight on every write. The
   opening state is applied to the live options and to nothing else. `useExactSelectedClasses`
-  is deliberately **not** reset on open: it is a QuPath-wide setting the user may have set for
-  their own reasons, and the status strip already warns when it is on.
+  is **not** touched on open; the first user change turns it on, after the snapshot, and the
+  close restore puts the user's own value back (see
+  [How the panel uses it](#how-the-panel-uses-it----exact-on-components-expanded-040)).
 
 **Closing replays the snapshot -- 0.1.1.** `closePanel()` calls
 `ClassVisibilityPane.restoreOpeningState()`, which replays the very `VisibilitySnapshot`
@@ -286,6 +312,7 @@ selectedClassesProperty().clear();
 ```
 
 The panel's `Reset all` mirrors those three, in that order -- not two of them, not a superset.
+It leaves exact matching off; the next change in the panel turns it back on.
 
 Two consequences for any change to the extension:
 
@@ -321,12 +348,12 @@ its dock/undock button should say via `setSurfaceToggle` / `hideSurfaceToggle`.
 | `ClassVisibilityStage` | `.ui` | The floating window: geometry persistence, minimum sizes, the clamp onto an existing screen, `Modality.NONE` owned by the main stage, `WINDOW_HIDDEN` teardown |
 | `ClassVisibilityPane` | `.ui` | The entire UI. A `BorderPane`, responsive across a wide and a narrow profile. Owns no window geometry |
 | `ClassVisibilityController` | `.core` | Lifecycle: listener install/uninstall, image-follow, update gating, debounce |
-| `ClassCensus` | `.core` | Immutable harvest result. Class -> count, component -> (count, class spread), plus `matchedObjectsForClass` behind the `Affects` column. `null` and `PathClass.NULL_CLASS` folded to one `Unclassified` key |
+| `ClassCensus` | `.core` | Immutable harvest result. Class -> count, component -> (count, class spread), `imageClasses()` (every class in the image, whatever the scope -- what component rules expand against), `matchedObjectsForClass` and `ruleMatches`, the single copy of the viewer's predicate. `null` and `PathClass.NULL_CLASS` folded to one `Unclassified` key |
 | `ClassHarvester` | `.core` | Off-FX-thread walk via `PathObject.getClassifications()`. Pure, JavaFX-free, unit-testable |
-| `VisibilityRuleModel` | `.core` | Exact selections plus the component rule -> minimal delta against `selectedClasses`, **and the mode** where an operation implies one (solo). Two single-method interfaces to the outside -- `SelectedClassSet` and `VisibilityModeSwitch` -- so tests supply a `LinkedHashSet` and a lambda. Re-entrancy guard. Snapshot/restore. Pure, JavaFX-free, unit-testable |
+| `VisibilityRuleModel` | `.core` | Exact selections plus the component rule, expanded against `setKnownClasses` -> minimal delta against `selectedClasses`, **and the mode** where an operation implies one (solo). Two single-method interfaces to the outside -- `SelectedClassSet` and `VisibilityModeSwitch` -- so tests supply a `LinkedHashSet` and a lambda. Re-entrancy guard. Snapshot/restore. Pure, JavaFX-free, unit-testable |
 | `VisibilitySnapshot` | `.core` | An immutable capture of the whole `OverlayOptions` visibility surface (see below) |
 | `VisibilityStateStore` | `.core` | Holds the one snapshot. `capture` **replaces** it and runs when the panel opens; `captureIfAbsent` covers the menu actions that run with the panel closed |
-| `VisibilityPreset` | `.core` | One named preset as JSON: class rules and panel checks as **strings**, plus the mode, exact flag, cell display, opacity and the per-type booleans. Versioned, and tolerant of a file written before a field existed |
+| `VisibilityPreset` | `.core` | One named preset as JSON: class rules and panel checks as **strings**, plus the mode, cell display, opacity and the per-type booleans. Not the exact flag: restoring any preset turns it on, and the field in a pre-0.4.0 file is ignored. Versioned, and tolerant of a file written before a field existed |
 | `VisibilityPresetStore` | `.core` | The project's own `ResourceManager` at `resources/class-visibility`, the mechanism Brightness & Contrast uses for its settings. Degrades to an empty list with no project; never throws at a click |
 | `ComponentMatchHighlight` | `.core` | Which class rows the component rule covers (through `ClassCensus.ruleMatches`) and when the covered rows pulse. Pure, JavaFX-free |
 | `CombinationHint` | `.core` | When the `Any` / `All` teaching pulse fires: once per session. Pure, JavaFX-free |
@@ -356,21 +383,21 @@ already been got wrong once somewhere.
    it is what stops a degenerate component like `positive` reading as one. The column is off
    by default as of 0.2.0; the warning it carries also reaches the user through `status.s9`
    and `tooltip.row.component.coverage`, which is what makes hiding it safe.
-5. **A count shown beside a control that acts on a different number must say so where it is
-   read.** Since 0.3.3 the class list shows `Count` (objects carrying exactly this class) by
-   default and hides `Affects` (objects a click would move, right now, under the current
-   `Exact matches only` setting) behind the column menu -- the user's call (2026-09-24): the
-   exact count is what people read the list for. That reverses the 0.2.0 default made for
-   finding S1, so S1's concern is now met at the cell: `ClassCountCell` carries a tooltip with
-   the `Affects` number on every row where it exceeds `Count`, and no tooltip where they agree.
-   Do not remove that tooltip without restoring `Affects` to the default view.
-   `ClassCensus.matchedObjectsForClass` mirrors `OverlayOptions.isPathClassHidden` including
-   its `isDerivedClass()` guard; if that predicate ever drifts from QuPath's, `Affects` becomes
-   a confident lie. The component list's number is **`Total`**, never `Count`:
-   `countForComponent` is "objects whose class contains this component", which is both the
-   number people want ("all CD3") and the number a component rule acts on, but it is not the
-   exact-class number the classes list calls `Count`, and until 0.3.3 it shared that name and
-   that tooltip. The combined reach of the checked components is on the `Any` / `All` labels,
+5. **A class row's `Count` is the number a click on it acts on, and anything that breaks that
+   must say so where it is read.** Since 0.4.0 the class list is exact (see
+   [How the panel uses it](#how-the-panel-uses-it----exact-on-components-expanded-040)), so
+   `Count` (objects carrying exactly this class) and the reach of a click agree, and the
+   `Affects` column that existed to show the gap is gone. The gap reopens only if something
+   outside the panel turns `useExactSelectedClasses` off while it is open; for that case
+   `ClassCountCell` still carries `tooltip.cell.countReachesMore` with
+   `ClassCensus.matchedObjectsForClass` under the live flag, and `status.s5.class` still words
+   a soloed class honestly. Every count and status reads the **live** flag, never an assumed
+   one. `matchedObjectsForClass` mirrors `OverlayOptions.isPathClassHidden` including its
+   `isDerivedClass()` guard, pinned by `ViewerVisibilityContractTest`. The component list's
+   number is **`Total`**, never `Count`: `countForComponent` is "objects whose class contains
+   this component", which is both the number people want ("all CD3") and the number a
+   component rule acts on, but it is not the exact-class number the classes list calls
+   `Count`. The combined reach of the checked components is on the `Any` / `All` labels,
    computed from `VisibilityRuleModel.componentEntriesFor` so it is exactly what a click on
    either radio would write.
 
@@ -384,12 +411,14 @@ already been got wrong once somewhere.
    checkbox column if the menu hides it; that column carries the check-all control.
 6. **Anything that reports on a rule must ask what the rule reaches, never whether its name is
    a key in the census -- and it counts set entries, not rows.** A rule with no visible row is
-   still a rule. Set membership is not the question a user is asking, and on combinatorial
-   class names it answers backwards: a class rule usually matches only through derived
-   classes, and an `All` composite is never a census key by construction. Route every such
-   count through `ClassCensus.matchedObjectsForClass`, as `countOrphanRules()`,
-   `ruleStatusText` and the `Affects` column all now do. This shipped wrong in 0.1.x, on
-   exactly the data the extension is for. The per-class question -- does this entry reach
+   still a rule. Set membership is not the question a user is asking: with exact matching
+   off -- QuPath's default, and a state something outside the panel can restore -- a rule can
+   match only through derived classes. Route every such count through
+   `ClassCensus.matchedObjectsForClass` under the live flag, as `countOrphanRules()` and
+   `ruleStatusText(listedInImage, reachesObjects)` do. This shipped wrong in 0.1.x, on
+   exactly the data the extension is for. A component rule's expanded entries are ordinary
+   classes; one carried only by an object type outside the `List` scope reads
+   `Matches nothing listed above`, which is true of the list on screen. The per-class question -- does this entry reach
    that class -- is `ClassCensus.ruleMatches`, the single copy of the viewer's predicate that
    `matchedObjectsForClass` and the covered-row ring (`ComponentMatchHighlight.covers`) both
    call. Do not write a second one.
@@ -442,7 +471,7 @@ already been got wrong once somewhere.
     trip is still a bug in the product.
 16. **A preset's restore writes viewer state first and rules last.** The mode and the exact
     flag change what a given rule set *means*, so writing them after the rules repaints once
-    through a combination the preset does not describe.
+    through a combination the preset does not describe. The flag is always written `true`.
 17. **The everything-hidden signal is never colour-only, and one function decides it.** The
     halo on the classes table's header check box is one channel; the others are text --
     `status.s2` on the always-visible strip, `placeholder.rules.empty.allHidden` in the empty
@@ -465,12 +494,27 @@ already been got wrong once somewhere.
     once per session, on the crossing to two components, latch unspent when it cannot fire.
     `ComponentMatchHighlight` is feedback: it pulses on every change to the component rule's
     **entries** (not its checked names -- `Any` and `All` over the same names are different
-    entries), never on a census, filter or mode refresh, and holds nothing back for later.
+    entries), never on a filter or mode refresh, and holds nothing back for later. A census
+    pulses only when it changes the expansion -- a newly appeared class the checked components
+    cover -- because that is a change to what they reach; a recount with the same classes
+    compares equal and does not.
     Both share `HINT_HALF_PERIOD` / `HINT_HALF_CYCLES` so they read as one design, and both
     are stopped on every teardown path (`dispose`, the pane leaving the screen, image change).
     The covered-row ring's steady state is not preference-gated; only the motion is. The ring
     goes on the class row's check box, not its name, so it cannot collide with the `Find`
     bolding.
+20. **A component rule is one rule in the panel, however many entries it writes.** Its
+    expansion is recomputed on every `apply()`, so every path that writes -- check, `Any` /
+    `All`, solo, `setKnownClasses`, `restoreState` -- goes through `componentEntriesFor` and
+    nothing caches a stale list. The bookkeeping follows from that: `sourceOf` reports
+    `COMPONENTS_ANY` / `COMPONENTS_ALL` for any expanded class; `removeRule` on one drops the
+    component(s) whose expansion contains it (under `All`, the whole combination);
+    `onExternalChange` withdraws a component only when **none** of its entries remain, since
+    removing one class elsewhere is a narrowing the next `apply()` will undo; and
+    `restoreState` re-expands against the current known classes, adding only. Covered class
+    rows render ticked **and** disabled (`componentDerivedEntries()` contains them) as well as
+    ringed, because the set really holds them -- a row the user also ticked keeps its
+    `exactSelections` claim and survives the component's uncheck.
 
 ### The snapshot, and how it differs from a preset
 

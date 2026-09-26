@@ -13,6 +13,7 @@ import qupath.lib.regions.ImagePlane;
 import qupath.lib.roi.ROIs;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -63,6 +64,10 @@ class ViewerVisibilityContractTest {
                 showSelectedOnly -> options.setSelectedClassVisibilityMode(showSelectedOnly
                         ? ClassVisibilityMode.SHOW_SELECTED
                         : ClassVisibilityMode.HIDE_SELECTED));
+        // What the panel does at the first change, and what makes a class rule mean that class
+        // alone. Component rules are expanded against the image's classes instead.
+        options.setUseExactSelectedClasses(true);
+        model.setKnownClasses(List.of(CD3, CD31, CD3_CD8, CD8_CD3, CD3_CD8_CD4_CD45, CD31_CD8, CD4));
     }
 
     private static PathObject objectOf(PathClass pathClass) {
@@ -161,17 +166,19 @@ class ViewerVisibilityContractTest {
     }
 
     @Test
-    @DisplayName("R1 interlock: Exact matches only makes component rules inert, not wrong")
-    void exactMatchesOnlyDisablesComponentMatching() {
+    @DisplayName("Components still reach derived classes with Exact matches only on")
+    void componentRulesSurviveExactMatching() {
+        // Until 0.4.0 exact matching made a component rule inert, and the panel greyed the list
+        // out. Expanding the rule into the classes it covers is what lets the two coexist.
         model.setComponentSelected("CD3", true);
+        assertThat(options.getUseExactSelectedClasses()).isTrue();
         assertThat(hidden(CD3_CD8)).isTrue();
+        assertThat(hidden(CD3_CD8_CD4_CD45)).isTrue();
 
-        options.setUseExactSelectedClasses(true);
-
-        // This is the persistent preference the panel must surface. With it on, the derived class
-        // is no longer matched by the bare component -- the exact bare class still is.
-        assertThat(hidden(CD3_CD8)).as("derived class, exact matching on").isFalse();
-        assertThat(hidden(CD3)).as("the exact class is still matched").isTrue();
+        // And they stay right if something else turns it off again.
+        options.setUseExactSelectedClasses(false);
+        assertThat(hidden(CD3_CD8)).isTrue();
+        assertThat(hidden(CD31)).isFalse();
     }
 
     @Test
@@ -217,8 +224,8 @@ class ViewerVisibilityContractTest {
         assertThat(hidden(CD3)).as("bare CD3 lacks CD8").isTrue();
         assertThat(hidden(CD31)).isTrue();
         assertThat(hidden(CD3_CD8_CD4_CD45))
-                .as("a superset of the soloed class also matches, so it stays visible")
-                .isFalse();
+                .as("a superset is another class, so it is hidden too")
+                .isTrue();
     }
 
     @Test
@@ -300,31 +307,17 @@ class ViewerVisibilityContractTest {
     }
 
     @Test
-    @DisplayName("A class-column rule also hides supersets of that class, by default")
-    void classRuleAlsoHidesSupersets() {
-        // The class column is labelled for EXACT classifications, but with the default
-        // useExactSelectedClasses=false, containsSelectedClass matches by set containment in
-        // BOTH directions: selecting "CD3: CD8" hides "CD3: CD8: CD4: CD45" too, because
-        // {CD3,CD8,CD4,CD45} containsAll {CD3,CD8}. That is QuPath's semantics, not a defect --
-        // but it means the "exact" column is not exact unless the user turns on "Exact matches
-        // only". See Phase 5 finding L2.
+    @DisplayName("A class-column rule reaches that class alone")
+    void classRuleIsExact() {
+        // The left list is labelled for exact classes and, since 0.4.0, acts on them: a rule for
+        // PanCK must not also show PanCK: Ki67 (user, 2026-09-26). The component list is where
+        // "anything containing" lives.
         model.setClassSelected(CD3_CD8, true);
 
         assertThat(hidden(CD3_CD8)).as("the class itself").isTrue();
-        assertThat(hidden(CD3)).as("bare CD3 is not a superset").isFalse();
-        assertThat(hidden(CD8_CD3)).as("same components, other order").isTrue();
-        assertThat(hidden(CD3_CD8_CD4_CD45)).as("a superset IS matched").isTrue();
-    }
-
-    @Test
-    @DisplayName("Exact matches only makes the class column behave as its label implies")
-    void exactMatchesOnlyNarrowsTheClassColumn() {
-        model.setClassSelected(CD3_CD8, true);
-        options.setUseExactSelectedClasses(true);
-
-        assertThat(hidden(CD3_CD8)).as("the class itself").isTrue();
-        assertThat(hidden(CD3_CD8_CD4_CD45)).as("superset no longer matched").isFalse();
-        assertThat(hidden(CD8_CD3)).as("reordered class is a different instance").isFalse();
+        assertThat(hidden(CD3)).as("a subset").isFalse();
+        assertThat(hidden(CD3_CD8_CD4_CD45)).as("a superset").isFalse();
+        assertThat(hidden(CD8_CD3)).as("same components, other order: another class").isFalse();
     }
 
     @Test

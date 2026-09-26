@@ -4,6 +4,32 @@ All notable changes to this extension are recorded here. The version in
 `build.gradle.kts` is the authority for what a build calls itself; this file says what
 changed between those versions.
 
+## 0.4.0
+
+### The two lists now mean different things
+
+Until now, checking `PanCK` in the **classes list** did the same as checking the `PanCK`
+**component**: it also showed `PanCK: Ki67`, `PanCK: CD68` and every other class containing
+PanCK. That was QuPath's default matching, not a choice the panel made, and the only way round
+it was QuPath's `Exact matches only`, which switched the component list off entirely.
+
+- **Classes list: exactly that class.** Checking `PanCK` shows or hides objects classed exactly
+  `PanCK` and nothing else. `Count` is now also the number a click acts on.
+- **Components list: anything containing it.** Checking the `PanCK` component still reaches
+  every class containing PanCK. Those classes are now **ticked (greyed) in the classes list as
+  well as ringed**, because each is written as a rule of its own.
+- **`Exact matches only` is gone from the panel**, along with its warning strip and `Turn off`
+  button. The panel turns QuPath's setting on itself the first time you change something, and
+  closing the panel puts your own value back.
+- **The `Affects` column is gone.** It could only ever equal `Count` now.
+- **`Active rules`** lists each class a component rule covers, with the component as its source.
+  `Remove` on one of them drops the component behind it. There is no more
+  `CD3 + CD8 (all components)` composite line.
+- A component rule covers classes on **every object in the image**, whatever `List` is set to;
+  a class that appears later (for example after running a
+  classifier) is picked up on the next recount.
+- **Presets** no longer store `Exact matches only`; restoring one turns it on.
+
 ## 0.3.3
 
 ### The lists show counts by default

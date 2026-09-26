@@ -7,8 +7,10 @@ import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Walks an object hierarchy and counts the classes it carries, producing an immutable
@@ -120,7 +122,18 @@ public final class ClassHarvester {
      * @return the census
      */
     public static ClassCensus harvest(PathObjectHierarchy hierarchy, Scope scope) {
-        return harvest(objectsInScope(hierarchy, scope));
+        ClassCensus census = harvest(objectsInScope(hierarchy, scope));
+        if (scope == Scope.ALL_OBJECTS || hierarchy == null) {
+            return census;
+        }
+        // Component rules are expanded against every class in the image, not just the listed
+        // ones, so a second pass collects the classes only. Distinct classes, never counts.
+        Set<PathClass> imageClasses = new LinkedHashSet<>();
+        for (PathObject pathObject : objectsInScope(hierarchy, Scope.ALL_OBJECTS)) {
+            PathClass pathClass = pathObject.getPathClass();
+            imageClasses.add(pathClass == null ? PathClass.NULL_CLASS : pathClass);
+        }
+        return census.withImageClasses(imageClasses);
     }
 
     /**

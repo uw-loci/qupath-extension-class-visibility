@@ -36,12 +36,11 @@ being opened.
 | `[!] Every object is hidden. "Show only checked classes" is on and nothing is checked.` | **Expected the moment you open the panel** -- that is how it starts, so you can check your way to what you want to see. See [Opening the panel hides everything](#opening-the-panel-hides-everything). If you did not just open the panel, see [If everything disappears](#if-everything-disappears). Either way, the check box at the top of the classes list is haloed in blue and one click on it puts everything back. |
 | `[i] 1 rule active -- objects in that class are hidden, in every object type.` | Normal `Hide checked classes` operation. "In every object type" is not decoration -- see [`List` chooses what you see here](#list-chooses-what-you-see-here-not-what-gets-hidden). |
 | `[i] 1 rule active -- only objects matching it are shown.` | Normal `Show only checked classes` operation. |
-| `[i] Showing only CD3: CD8 and any class containing all of its parts. Everything else is hidden.` | You soloed a class row that has supersets in this image -- see [Show only one class](#show-only-one-class) and [What a checked class row acts on](#what-a-checked-class-row-acts-on). |
+| `[i] Showing only CD3: CD8. Everything else is hidden.` | You soloed a class row. Only that exact class is on screen -- see [Show only one class](#show-only-one-class). |
 | `[i] Showing only classes containing CD8. Everything else is hidden.` | You soloed a component row. |
-| `[i] Showing only CD3: CD8. Everything else is hidden.` | You soloed something that reaches nothing beyond itself -- an exact rule, or a class with no supersets in this image. |
+| `[i] Showing only CD3: CD8 and any class containing all of its parts, because "Exact matches only" was turned off outside this panel. ...` | Rare. Something other than this panel turned QuPath's `Exact matches only` off, so a class rule is reaching supersets again. Any change you make in the panel turns it back on -- see [A checked class is that class, nothing more](#a-checked-class-is-that-class-nothing-more). |
 | `1 rule matches nothing listed above.` | A rule that reaches none of the objects in the lists as they stand -- usually a rule for a class the current image does not carry. It is still in force -- see [Working across several images](#working-across-several-images). This is inside the `Active rules` expander, with the rest of the routine status. |
 | `[i] 2 rules active -- they apply to every image.` | No image is open, and rules are still set. |
-| `[!] "Exact matches only" is on. ...` | A QuPath-wide setting is blocking component rules -- see [One QuPath setting can switch the component list off](#one-qupath-setting-can-switch-the-component-list-off). |
 | `Counting classes in ... ` | A recount is running. On a very large image, see [Work on a very large image](#work-on-a-very-large-image-without-the-panel-slowing-you-down). |
 | `"positive" is in 26 of 28 classes and 401,552 of 452,110 objects.` | You checked a component that is in nearly every class -- see [Components that appear in almost every class](#components-that-appear-in-almost-every-class). |
 | `The panel is closed, but 3 class rules are still in force. Objects stay hidden until you clear them.` | Closing the panel could not put your view back, and rules are in force that may be the panel's -- see [Rules can still be in force with no panel open](#rules-can-still-be-in-force-with-no-panel-open-and-the-toolbar-button-says-so). An ordinary close does not show this: it restores your view and says nothing. |
@@ -49,9 +48,9 @@ being opened.
 | `Switched "Show only checked classes" back to "Hide checked classes" ...` | The guard fired on a setting you made -- see [What the panel does about it](#what-the-panel-does-about-it). |
 | `Put the view back to how it was before this panel touched anything.` | `Restore the state from when the panel opened` ran -- see [If everything disappears](#if-everything-disappears). |
 | `Saved the preset "T cells" to this project.` / `Deleted the preset "T cells".` | A named view was written into, or removed from, the project -- see [Presets: a view you named](#presets-a-view-you-named). |
-| `Matches classes listed above` (in `Active rules`) | The rule has no row of its own in the classes list, but it reaches classes that do -- normal on multiplexed data, and normal for every `All` combination. See [What a checked class row acts on](#what-a-checked-class-row-acts-on) and [One thing to expect in QuPath's Annotations pane](#one-thing-to-expect-in-qupaths-annotations-pane). |
-| `Matches nothing listed above` (in `Active rules`) | The rule is in force and reaches nothing here. Most often a rule for a class this image does not carry -- see [Working across several images](#working-across-several-images). |
-| `Already set by the component rule below. ...` | A class row is checked and disabled because a component rule already covers it -- see [How the two lists combine](#how-the-two-lists-combine). |
+| `Matches classes listed above` (in `Active rules`) | The rule has no row of its own in the classes list, but it reaches classes that do. Rare since 0.4.0: it needs QuPath's `Exact matches only` to have been turned off outside the panel -- see [A checked class is that class, nothing more](#a-checked-class-is-that-class-nothing-more). |
+| `Matches nothing listed above` (in `Active rules`) | The rule is in force and reaches nothing here. Most often a rule for a class this image does not carry -- see [Working across several images](#working-across-several-images). A component rule can produce these too: it also writes matching classes carried by object types outside `List`, so with `List: Detections` a `PanCK` component can add a rule for a `PanCK: Stroma` class that only an annotation carries. |
+| `Ticked by the checked components, which reach this class ...` | A class row is ticked, greyed and ringed because a component rule covers it -- see [How the two lists combine](#how-the-two-lists-combine). |
 | `No rules are active, and "Show only checked classes" is on, so every object is hidden. Check a class above to see it.` (in `Active rules`) | The empty `Active rules` table, in the state the panel opens in. Expected -- see [Opening the panel hides everything](#opening-the-panel-hides-everything). |
 | `No rules are active. Every object is visible.` (in `Active rules`) | The empty `Active rules` table under `Hide checked classes`, where no rules really does mean nothing hidden. If your viewer is still blank, the cause is not a class rule -- see [It might not be a class rule at all](#it-might-not-be-a-class-rule-at-all). |
 
@@ -121,7 +120,9 @@ and there is no preference to change that.
 
 **The panel is a session. Closing it undoes everything opening it did.** Whatever the panel
 found when it opened is what QuPath is left with when it closes: your class rules, the
-visibility rule, `Exact matches only`, overlay opacity, the cell display mode, and every one
+visibility rule, QuPath's `Exact matches only` (which the panel turns on while you work -- see
+[A checked class is that class, nothing more](#a-checked-class-is-that-class-nothing-more)),
+overlay opacity, the cell display mode, and every one
 of the object-type show and fill toggles. It does not matter what you did in between, or
 whether you did anything at all.
 
@@ -207,15 +208,14 @@ Top to bottom, the panel is:
 | Zone | What it is |
 |---|---|
 | `Image:` | The image the rows and counts come from. This is the panel's way of telling you which image it is describing, and it is there in every layout. At the right of the same row: a **`?`** button with a short summary of the panel and what to do if the viewer goes blank, and the `Dock as tab` / `Undock to window` button. |
-| `Collapse` / `Expand` | At the **left** of the `Image:` row. `Collapse` hides everything from `Preset:` down to `Find:` so the two lists get the height; the `Image:` row stays, and so does the `Exact matches only` warning if it is showing. See [Collapsing the top of the panel](#collapsing-the-top-of-the-panel). |
+| `Collapse` / `Expand` | At the **left** of the `Image:` row. `Collapse` hides everything from `Preset:` down to `Find:` so the two lists get the height; the `Image:` row stays. See [Collapsing the top of the panel](#collapsing-the-top-of-the-panel). |
 | `Preset:` | A combo of the views saved in this project, with `Save` and `Delete`. Choosing one applies it immediately. Empty, and disabled apart from the combo, when no project is open. See [Presets: a view you named](#presets-a-view-you-named). **On a wide panel `List:` shares this row**, at its right-hand end. |
 | `Visibility rule:` | Two radio buttons, `Hide checked classes` and `Show only checked classes`. The panel opens on the second one -- see [Opening the panel hides everything](#opening-the-panel-hides-everything) and [below](#hide-checked-classes-vs-show-only-checked-classes). **On a wide panel the cell-display note shares this row**, at its right-hand end. |
 | `Dense cells? Try View -> Cell Display` | A line of text, and a pointer rather than a control -- it names a menu and stops there. **Cell display is QuPath's own setting and has nothing to do with classes**, but it can make cells look wrong in a way that is easily blamed on this panel, which is the only reason a line about it appears here at all. Hover it for the rest: which of the four options to try, and what changes when you do. It is drawn a little dimmer than the controls, with the menu path in italics. On a wide panel it sits at the right-hand end of the `Visibility rule:` row, after a vertical bar, and when there is not room for all of it only `Dense cells? Try` shortens -- the menu path always stays whole; on a narrow one it has a line of its own below the radios. See [`Cell display`: how cells are drawn](#cell-display-how-cells-are-drawn). |
 | `List:` | Which objects are counted and listed -- `Detections`, `Cells`, `Annotations` or `All objects`. It chooses what you *see in this panel*, never what gets hidden. See [the next section](#list-chooses-what-you-see-here-not-what-gets-hidden). On a wide panel it sits at the end of the `Preset:` row; on a narrow one it has a line of its own, above `Find:`. |
-| `Find:` | One filter field over both lists. Case-insensitive, matches anywhere in the name, and the matched text is shown in **bold** in the rows that survive. **On a wide panel `Exact matches only` shares this row**, at its right-hand end. |
-| `Exact matches only` | A QuPath-wide setting. While it is on, the whole component half of the panel is greyed out. See [below](#one-qupath-setting-can-switch-the-component-list-off). At the end of the `Find:` row on a wide panel; on its own line below `Find:` on a narrow one. |
-| Classes list | Headed `Classes on detections in this image (28)`. One row per class present in the image, with a checkbox, a **colour swatch** and the name, then a **`Count`** -- how many objects carry exactly this class. Sorted by `Count` descending by default. An **`Affects`** column, how many objects a click on the row would actually hide or show, is off by default and one click away in the column menu button (`+`); the two are different numbers -- see [What a checked class row acts on](#what-a-checked-class-row-acts-on). Hover a `Count` to see when a click reaches more than it. The **checkbox column's header holds a check box of its own**, which checks or unchecks everything currently listed. |
-| Components list | Headed `Anything containing these components (17)`, which is what checking a row does. One row per component, with a checkbox, the name and a **`Total`** -- every object carrying that component anywhere in its class, so for `CD3` the whole of `CD3`, `CD3: CD8`, `CD3: CD8: PD1` and so on. It is deliberately not called `Count`, which in the classes list means one exact class. Sorted by name, alphabetically, by default. A **`Spread`** column is off by default, in the same column menu button -- see [The `Spread` column](#the-spread-column-how-many-classes-a-component-covers). |
+| `Find:` | One filter field over both lists. Case-insensitive, matches anywhere in the name, and the matched text is shown in **bold** in the rows that survive. |
+| Classes list | Headed `Classes on detections in this image (28)`. One row per class present in the image, with a checkbox, a **colour swatch** and the name, then a **`Count`** -- how many objects carry exactly this class, which is also how many a click on the row acts on. Sorted by `Count` descending by default. A checked row is a rule for **that exact class only** -- see [A checked class is that class, nothing more](#a-checked-class-is-that-class-nothing-more). The **checkbox column's header holds a check box of its own**, which checks or unchecks everything currently listed. |
+| Components list | Headed `Anything containing these components (17)`, which is what checking a row does. One row per component, with a checkbox, the name and a **`Total`** -- every object carrying that component anywhere in its class, so for `CD3` the whole of `CD3`, `CD3: CD8`, `CD3: CD8: PD1` and so on. It is deliberately not called `Count`, which in the classes list means one exact class. Sorted by name, alphabetically, by default. A **`Spread`** column is off by default, in the table's column menu button (`+`) -- see [The `Spread` column](#the-spread-column-how-many-classes-a-component-covers). |
 | `Checked components combine as:` | The `Any` / `All` radios. Only meaningful from two checked components onward. |
 | `Active rules` | An expander listing every rule in force, including rules with no row in the lists above. Its title carries the count -- `Active rules (3)` -- without opening it, and the sentence saying what that means in words is inside. See [See every rule in force](#see-every-rule-in-force-including-invisible-ones). |
 | Status strip | Always visible, and it holds the things you cannot afford to miss: the `[!] Every object is hidden` warning, the note that fires when you check a component that is in nearly every class, and the buttons -- `Undo`, `Reset all`, `Switch to "Hide checked classes"`. `Undo` is one step deep and always names the step -- `Undo "Check CD8"`, `Undo "Show only CD3: CD8"`, `Undo "Reset all"` -- so it is never a guess. Every action reaches it: single rows, the header check box, a solo, an applied preset, and `Reset all` alike. When there is nothing to say and no button to offer, the strip leaves the layout rather than holding a blank line open. The routine "what is in force" sentence is inside `Active rules`, above it. |
@@ -277,7 +277,8 @@ rows appear.
    whatever that was -- see
    [Closing the panel puts your view back](#closing-the-panel-puts-your-view-back).
 7. **`Reset all`** always gets you back to QuPath's own defaults: no rules,
-   `Hide checked classes`, `Exact matches only` off. From there a checked row means "hide
+   `Hide checked classes`, `Exact matches only` off (the panel turns it back on at your next
+   change). From there a checked row means "hide
    this" instead.
 
 </details>
@@ -345,18 +346,16 @@ the analysis pane and it reappears.
 
 Once the rule, the `List` scope and any `Find` text are set, the rows that hold them are
 mostly taking space from the lists. **`Collapse`**, at the left of the `Image:` row, hides
-them: `Preset:`, `Visibility rule:` (with the cell-display note), `List:`, `Find:` and
-`Exact matches only`. What is left is the `Image:` row, the two lists and everything below
+them: `Preset:`, `Visibility rule:` (with the cell-display note), `List:` and `Find:`. What
+is left is the `Image:` row, the two lists and everything below
 them. **`Expand`** puts them back.
 
 Collapsing changes what you see, not what is in force:
 
-- every rule, the visibility mode and `Exact matches only` keep working exactly as before;
+- every rule and the visibility mode keep working exactly as before;
 - **a `Find` filter stays applied.** The list headers still say so -- `(5 of 28)` -- so a
   short list is never unexplained, but the filter text itself is out of sight until you
   expand;
-- the **`Exact matches only` warning does not collapse.** It is the only explanation for a
-  greyed-out component list, so it stays on screen whenever that setting is on;
 - the status strip at the bottom, including `[!] Every object is hidden`, is untouched.
 
 **`Ctrl+F` (`Cmd+F` on macOS) expands the panel** as it jumps to `Find`, so the shortcut
@@ -371,14 +370,14 @@ There is one panel, and it lays itself out two ways depending on how much width 
   by side, classes on the left and components on the right, with a divider you can drag. The
   header is **three rows**, no control holding a line to itself -- `Preset:` with its combo,
   `Save`, `Delete` and then `List:`; `Visibility rule:` with its two radios and then the
-  cell-display note; `Find:` with its field, the clear button and then `Exact matches only`.
+  cell-display note; and `Find:` with its field and the clear button.
   When a row runs short of width the labels and the controls keep their full text and the
   cell-display note is the one thing that shortens, because it is the only occupant you can
   read half of and still act on.
 - **Narrow** (roughly 580 px and below, which is the usual docked width): the two lists
   stack vertically, classes above components, again with a draggable divider. **The header
   stacks rather than compressing**: the mode radios go one above the other with the
-  cell-display note on a line below them, and `List:`, `Find:` and `Exact matches only` each
+  cell-display note on a line below them, and `List:` and `Find:` each
   take a line of their own. Nothing is dropped -- the
   panel would sooner be taller than push a control off its right-hand edge. The classes
   header shortens -- `Classes on detections (3 of 28)` rather than
@@ -438,93 +437,63 @@ colon-separated part (`CD3`, `CD8`, `PD1`) is a **component**.
 ### The two lists
 
 - **Classes** -- one row for each whole class actually present in the current image.
-  Checking `CD3: CD8` acts on that class **and on every class carrying both of those parts**
-  -- `CD3: CD8: PD1`, `CD3: CD8: CD4: CD45`, and so on. See
-  [What a checked class row acts on](#what-a-checked-class-row-acts-on), which is the one
-  thing in this panel most likely to surprise you.
+  Checking `PanCK` acts on objects classed exactly `PanCK`, and on nothing else: not
+  `PanCK: Ki67`, not `PanCK: CD68`. See
+  [A checked class is that class, nothing more](#a-checked-class-is-that-class-nothing-more).
 - **Components** -- one row for each individual name that appears anywhere in those
-  classes. Checking `CD3` acts on every class that *contains* `CD3`.
+  classes. Checking `PanCK` acts on every class that *contains* `PanCK` -- `PanCK`,
+  `PanCK: Ki67`, `PanCK: CD68` and the rest.
 
-### What a checked class row acts on
+That is the whole difference between the two lists, and it holds whatever else you set.
 
-**A checked class row is not an exact match by default.** QuPath matches a selected class
-against everything that carries all of its parts, so a class row reaches its own class *and
-every class that adds markers to it*. On a small project the difference is usually invisible,
-because there is nothing above `CD3: CD8` to catch. On a 30-class combinatorial panel there
-usually is -- five or six things, which is what "combinatorial" means.
+### A checked class is that class, nothing more
 
 Say your image carries these six classes, and you check the row `CD3: CD8`:
 
-| Class in the image | `Count` | Acted on, by default | With `Exact matches only` on | Why |
-|---|---|---|---|---|
-| `CD3: CD8` | 412 | yes | yes | it is that class |
-| `CD8: CD3` | 51 | yes | yes | order is never significant |
-| `CD3: CD8: PD1` | 1,204 | **yes** | no | it carries both `CD3` and `CD8`; the extra part does not stop it |
-| `CD3: CD8: CD4: CD45` | 880 | **yes** | no | same again |
-| `CD3` | 9,310 | no | no | it does not carry `CD8` |
-| `CD31: CD8` | 77 | no | no | `CD31` is a different name from `CD3` |
+| Class in the image | `Count` | Acted on | Why |
+|---|---|---|---|
+| `CD3: CD8` | 412 | **yes** | it is that class |
+| `CD8: CD3` | 51 | no | QuPath treats it as a different class; check its own row |
+| `CD3: CD8: PD1` | 1,204 | no | it carries more than `CD3: CD8` |
+| `CD3: CD8: CD4: CD45` | 880 | no | same again |
+| `CD3` | 9,310 | no | it does not carry `CD8` |
+| `CD31: CD8` | 77 | no | a different class altogether |
 
-The row you clicked shows `Count 412`. What actually disappears is 2,547.
+The row you clicked shows `Count 412`, and 412 objects are what the click acts on. **`Count`
+is always the number a click on a class row acts on.**
 
-### `Count` and `Affects`
+To reach every class carrying both `CD3` and `CD8` -- the 2,547 objects in the first four
+rows -- check `CD3` and `CD8` in the **Components** list and
+choose `All`. That is what the Components list is for.
 
-That gap is why the classes list has **two** number columns, only one of which is on screen
-by default:
+**How the panel keeps the two lists apart.** QuPath itself has one matching rule for every
+selected class, set by its `Exact matches only` option. With that option off (QuPath's
+default), a selected `PanCK` also matches `PanCK: Ki67`, so a class row and a component row
+would do the same thing. So **the panel turns `Exact matches only` on the first time you
+change anything**, which makes a class row exact, and writes each component rule as the list
+of classes that contain it. A checked `PanCK` component therefore puts `PanCK`,
+`PanCK: Ki67`, `PanCK: CD68` and every other `PanCK` class in this image into QuPath's rules,
+and you can see each of them in [`Active rules`](#see-every-rule-in-force-including-invisible-ones).
+Closing the panel puts your own `Exact matches only` setting back, along with everything else
+-- see [Closing the panel puts your view back](#closing-the-panel-puts-your-view-back).
 
-| Column | What it counts | On screen |
-|---|---|---|
-| **`Count`** | objects carrying **exactly** this class -- 412 | yes |
-| **`Affects`** | objects a click on this row would hide or show **right now** -- 2,547 | off by default |
+Two consequences worth knowing:
 
-**`Count` is the one you get**, because "how many `CD3: CD8` cells are there" is the question
-most people read this list to answer. Where a click would reach further than that, **hover the
-`Count`**: its tooltip says how many objects the click acts on and why. Rows without that
-tooltip have no gap.
-
-`Affects` is one click away in the **column menu button** -- the small `+` at the right-hand
-end of the table's header row. Turn it on when you are about to build a view from class rows
-and want the gap in front of you on every row at once.
-
-`Affects` follows the current settings rather than describing an idea: turn on
-`Exact matches only` and it drops to match `Count`, because that is genuinely what the click
-would then do. **It renders in bold whenever it is larger than `Count`** -- the panel saying
-*this row reaches further than it looks*. When the two are equal `Affects` is plain, and on a
-small project they will usually be equal all the way down the list.
-
-**With `Exact matches only` on, nothing in the column is bold.** That is not a rendering
-fault: a click then acts on the class itself and nothing else, so `Affects` equals `Count` on
-every row. The column's hover text says the same.
-
-`Affects` is the number to trust for a decision and the number to read after a surprise.
-`Count` is still the honest answer to "how many cells are `CD3: CD8`", which is the question a
-figure legend usually asks -- but take a figure's numbers from a measurement table, which
-visibility never touches, rather than from either column here.
-
-(Neither column is dropped when the panel gets narrow.)
-
-**`Exact matches only` narrows a class row to the class itself.** That checkbox is QuPath's
-own setting rather than the panel's, and it has a second effect you probably do not want as a
-side-effect: while it is on, component rules cannot match anything at all. See
-[One QuPath setting can switch the component list off](#one-qupath-setting-can-switch-the-component-list-off).
-If you need exact class rows *and* component rules in the same session, you cannot have both
-at once.
-
-**Soloing a row inherits all of this**, and says so. Showing only `CD3: CD8` shows that class
-and its supersets, and the sentence inside `Active rules` reads
-`[i] Showing only CD3: CD8 and any class containing all of its parts. Everything else is
-hidden.` -- the longer wording appears exactly when the shorter one would be false. If the
-class has no supersets in this image, you get the short version instead.
-
-This is QuPath's matching rule, not something the panel invented, and it is a good rule --
-"hide CD3" meaning "hide everything CD3-positive" is what people almost always want. It is
-just not what the word *exact* would suggest, and on multiplexed data it is not a corner
-case.
+- **While the panel is open, QuPath's own class list (the Annotations tab) also matches
+  exactly**, because it is the same QuPath setting. A class you select there hides or shows
+  that class alone.
+- **If something outside the panel turns `Exact matches only` off** while it is open, class
+  rows reach supersets again until your next change in the panel. The panel does not hide
+  this: hover a `Count` and its tooltip says how many objects the click now acts on, and a
+  soloed class says `... and any class containing all of its parts, because "Exact matches
+  only" was turned off outside this panel.`
 
 ### What "contains" means, precisely
 
 A component matches if it is one of the parts, in any order. It is **not** a text search.
-This is QuPath's own matching rule -- the panel does not implement its own -- so the panel,
-QuPath's built-in Annotations pane and the viewer always agree.
+The panel decides which classes a component covers with the same containment test QuPath's
+viewer uses when `Exact matches only` is off, and then writes those classes into QuPath's
+rules -- so the panel and the viewer always agree.
 
 Checking the component `CD3`:
 
@@ -657,10 +626,8 @@ open you get whatever the list held last, and **a brand-new project starts out i
 rather than empty. Classes can therefore follow you from one project into the next, which is
 usually convenient and occasionally surprising.
 
-**A zero `Count` does not mean the row does nothing.** Its `Affects` can be large: no object
-carries `CD3: CD8` in this image, but a rule for it still reaches `CD3: CD8: PD1` and every
-other class here that carries both parts. Hover the `0` and its tooltip says so --
-`Count 0` with `Affects 2,135` is a row worth reading twice before you click it.
+A zero-count row does what its `Count` says: in this image, nothing. Its rule is still in
+force on every other image, which is the point of listing it.
 
 Two reasons to turn it on: a rule for a class that is absent from this image is perfectly
 legitimate (rules are global -- see
@@ -672,28 +639,6 @@ classes answers a different one.
 The panel **reads** that class list and never writes to it -- neither into the project nor
 into your preferences. QuPath's own "Populate from image" action does write to it; this panel
 deliberately has no equivalent.
-
-### One QuPath setting can switch the component list off
-
-**`Exact matches only`**, the checkbox at the end of the `Find:` row -- or on its own line
-below it, on a narrow panel -- is bound to QuPath's own setting
-**"Show/hide exact class matches only"**, the one under the **More options** button at the
-top of the class list in the Annotations tab. It is a saved preference, so it can be
-on from a session weeks ago.
-
-While it is on, only whole-class matches count, and **component rules cannot match anything**.
-The panel does not let you find that out by trial and error:
-
-- the whole component half of the panel is greyed out and cannot be clicked;
-- a warning strip appears directly under the checkbox itself -- `[!] "Exact matches only" is
-  on. Component rules match only a class with exactly that name, so they will not find
-  derived classes.` -- with a **`Turn off`** button;
-- any component rule already in force is listed in `Active rules` with the status
-  `Limited by "Exact matches only"`.
-
-Turning it off re-enables the component list, and any component rules already in force start
-matching again immediately -- nothing was cleared. The panel never turns the setting off
-behind your back: you set it, so you get to unset it.
 
 </details>
 
@@ -811,29 +756,30 @@ and it is the most common source of surprise in either mode.
 
 ### Seeing which classes your components reach
 
-**Every class row the component rule reaches has a blue ring round its check box.** Check
-`CD3` and each class carrying `CD3` -- `CD3`, `CD3: CD8`, `CD3: CD8: PD1` -- is ringed; the
-rest are not. The ring stays for as long as those components stay checked. It is how you
-tell a row that is on because **you ticked it** from one that is on because **a component
-reaches it**: a ticked row has a tick, a reached row has a ring, and a row can have both.
+**Every class row the component rule reaches is ticked, greyed out, and has a blue ring
+round its check box.** Check `CD3` and each class carrying `CD3` -- `CD3`, `CD3: CD8`,
+`CD3: CD8: PD1` -- is ticked and ringed; the rest are not. The tick is there because the
+component rule really has put each of those classes into QuPath's rules (see
+[A checked class is that class, nothing more](#a-checked-class-is-that-class-nothing-more)).
+The ring and the grey are how you tell a row that is on because **a component reaches it**
+from one that is on because **you ticked it**: a row you ticked yourself has a plain,
+clickable tick. The marks stay for as long as those components stay checked.
 
 The ring follows the same rule the viewer does, so it never marks a class the viewer leaves
 alone:
 
 - under **`All`**, only classes carrying **every** checked component are ringed, and
   switching between `Any` and `All` moves the rings to match;
-- with **`Exact matches only`** on, a component reaches only a class with exactly its name,
-  so usually nothing is ringed at all -- the same thing
-  [the warning under that checkbox](#one-qupath-setting-can-switch-the-component-list-off)
-  tells you;
 - **Unclassified** is never ringed, because no component can reach it.
 
 **Each time you change the components, the rings pulse** for about five seconds -- three
 slow swells, the same rate as the `Any` / `All` hint -- and then settle back to the steady
 ring. Unlike that hint it is not once a session: it happens on every change, including an
 uncheck that leaves other components still checked and an `Any` / `All` switch with two or
-more checked. It does not happen when the counts refresh, when you type in `Find`, or when
-you switch image, because none of those changed what your components reach.
+more checked. It does not happen when you type in `Find`, or when the counts refresh over
+the same classes. It **can** happen after a recount or an image switch that changes which
+classes your components cover -- a classifier adding a new `CD3` class, say -- because that
+is a change to what they reach.
 
 The classes list stays sorted by `Count`, so ringed rows are usually scattered down it
 rather than grouped. Scroll, or type the component into `Find`, to walk through them.
@@ -842,46 +788,42 @@ If you would rather not have the pulse, untick
 **`Pulse the classes a component change covers`** in **Extensions > Class Visibility**. That
 turns off the motion only; the steady ring always stays, because it is information rather
 than a hint. The setting is separate from the `Any` / `All` one, so turning either off
-leaves the other alone. Hovering a ringed row's check box explains the ring, and a screen
-reader reads it as "already covered by the checked components".
+leaves the other alone. Hovering a ringed row explains the ring, and a screen reader reads
+it as "already covered by the checked components".
 
 ### How the two lists combine
 
 Class rows and the component rule combine with OR: an object is matched if its exact class
-is checked, **or** if the component rule matches it. Checking class rows never overwrites
-your component choices, and checking components never overwrites your class rows. (The old
-script could not do this -- see [Coming from the script](migration-from-the-script.md).)
+is checked, **or** if the component rule reaches its class. Checking class rows never
+overwrites your component choices, and checking components never overwrites your class rows.
+(The old script could not do this -- see [Coming from the script](migration-from-the-script.md).)
 
-Where the two collide -- your `All` combination is `CD3: CD8` and `CD3: CD8` is also a real
-class in the image, or you have checked the component `CD8` and a bare `CD8` class exists --
-the class row shows as checked with its checkbox **disabled**, and its tooltip says
-`Already set by the component rule below. Change it in the Components list.` That stops an
-uncheck in one list quietly destroying a rule you built in the other.
+A class row the component rule reaches is ticked and **disabled**, and hovering it says
+`Ticked by the checked components, which reach this class -- that is what the blue ring says.
+Change it in the Components list.` That stops an uncheck in one list quietly destroying a rule
+you built in the other. If you had ticked that row yourself before checking the component,
+your tick survives: uncheck the component and the row stays checked.
 
 ### One thing to expect in QuPath's Annotations pane
 
-In `All` mode the panel expresses your choice to QuPath as a single combined class --
-`CD3: CD8` for the example above. That combination usually does not exist in QuPath's list
-of available classes, so QuPath's own class list has no row to highlight and will look
-as though nothing is selected, even while objects are being hidden.
+The panel writes a component rule into QuPath as **one rule per class it covers**. Check
+`CD3` and `CD8` under `All`, and QuPath's rules gain `CD3: CD8`, `CD3: CD8: PD1`,
+`CD3: CD8: CD4: CD45` and so on, each one a real class. So QuPath's own class list in the
+Annotations tab shows those classes as selected, where they are in its list, and
+`Active rules` lists each of them with the `Source` `Components (All)` (or `Components (Any)`).
 
-This is expected. The panel's `Active rules` expander lists the rule and, in its `Status`
-column, says whether it is reaching anything: `Matches classes listed above` while it is doing
-its job. The `Source` column reads `Components (All)`, so what kind of rule it is has already
-been said twice by the time you reach the status. `Reset all` clears it.
+The component rule covers every matching class **on any object in the current image**, not
+only the ones in the list on screen: a class carried only by annotations is covered while
+`List` shows detections, because hiding is never limited by `List`. Such a class shows in
+`Active rules` as `Matches nothing listed above`. Classes in QuPath's class list that no
+object in this image carries are not covered -- there is nothing of theirs to show or hide.
+When a class carrying your component appears later in the session (a classifier run, say),
+the panel adds it to the rules at the next recount, with no click from you.
 
-(Through 0.1.2 the status column read `Composite -- not in QuPath's class list` instead, and
-the status strip simultaneously counted the same rule as having no class in the image. Both
-were true statements about set membership and neither was an answer to "is this rule doing
-anything" -- see the [0.2.0 entry in the changelog](../CHANGELOG.md#020).)
-
-**`Active rules` does not dress that composite up as a class.** Check `CD8` and `CD45` and the
-rule reads **`CD45 + CD8 (all components)`**, not `CD45: CD8` -- the `+` and the suffix are
-there so you cannot mistake it for a class name and go hunting your class list for something
-that is not in it. (It is written alphabetically because that is what makes the rule stable:
-the panel has to find and remove its own composite when you change your mind, and it can only
-do that if the same two components always produce the same rule. **The order never affects
-what matches**, because matching compares sets of names, not text.)
+**`Remove` on one of those rows** removes the component (or, under `All`, the whole
+combination) behind it, and with it every class it wrote -- a component rule is one rule in
+the Components list, however many classes it expands to. To keep the component but drop one
+class from it, there is no switch; build the view from class rows instead.
 
 </details>
 
@@ -934,7 +876,7 @@ lifetimes:
 | | Survives a QuPath restart? |
 |---|---|
 | `Hide checked classes` / `Show only checked classes` | **yes** |
-| `Exact matches only` | **yes** |
+| `Exact matches only` (the panel turns it on while open; closing puts yours back) | **yes** |
 | Which classes are checked | **no** -- cleared when QuPath closes |
 
 So if you leave QuPath in `Show only checked classes` and quit, the next launch starts in
@@ -1093,6 +1035,8 @@ order, which is exactly what QuPath's own reset does:
 - switch the mode to `Hide checked classes`;
 - turn `Exact matches only` off;
 - clear every rule.
+
+The panel turns `Exact matches only` back on at your next change, so class rows stay exact.
 
 This is the sledgehammer. It always reaches a known good state, and it fills the undo slot
 first, so `Undo` will bring your rules back if you did not mean it.
@@ -1303,7 +1247,7 @@ with `Save` and `Delete` beside it. On a wide panel `List:` shares the rest of t
 ### Saving one
 
 Set the panel up the way you want it -- the classes and components checked, `Any` or `All`,
-the mode, `Exact matches only`, the cell display -- then click **`Save`** and give it a name
+the mode, the cell display -- then click **`Save`** and give it a name
 you will recognise next month (`T cells`, `Fig 3 panel`, `everything but stroma`). The name
 becomes a filename, so one containing characters a filename cannot hold is refused with the
 reason before anything is written, and saving over an existing name asks first.
@@ -1323,7 +1267,7 @@ on screen: deleting the preset you are looking at does not put the view back.
 | Carried | Not carried |
 |---|---|
 | the class rules in force -- the authoritative half | the `Find` text |
-| the show/hide mode, and `Exact matches only` | the sort order, column widths and divider position |
+| the show/hide mode | the sort order, column widths and divider position |
 | the `Cell display` mode and overlay opacity -- still carried, though the panel no longer has a control for the first | which image or project you were in |
 | the show and fill toggles for detections, annotations, the TMA grid, connections, TMA core labels, the grid and pixel classification | an object predicate set by a script |
 | the panel's own checked rows and the `Any` / `All` choice | |
@@ -1331,8 +1275,12 @@ on screen: deleting the preset you are looking at does not put the view back.
 Classes are stored **by name**, so a preset saved in one project applies in another that names
 its classes the same way -- which is most of the value in having them. A class the new image
 does not carry is still a rule: it appears in `Active rules` as `Matches nothing listed above`,
-exactly as it would if you had checked it by hand -- unless it still reaches classes the new
-image does carry, which on multiplexed data it usually does.
+exactly as it would if you had checked it by hand. Components are stored by name too, and a
+component rule is re-expanded against the classes of whatever image is open, so a `CD3`
+component saved on one image covers the `CD3` classes of the next.
+
+A preset does not store `Exact matches only`: applying one turns it on, like any other change
+in the panel. (Presets saved before 0.4.0 carry the old flag; it is ignored.)
 
 ### Where they live, and who else sees them
 
@@ -1391,15 +1339,18 @@ Three gestures do the same thing, and they work on class rows and component rows
 names -- `FoxP3 (Opal 570): 1+: PDL1 negative` -- were already being cut off to make room for
 it, and it lost most of its point once checking a row came to mean "show this".)
 
-On a class row this shows the class **and everything containing all of its parts** -- see
-[What a checked class row acts on](#what-a-checked-class-row-acts-on) -- and `Active rules`
-says which case you are in rather than making you work it out:
+On a class row this shows **that exact class and nothing else** -- `CD3: CD8: PD1` goes, see
+[A checked class is that class, nothing more](#a-checked-class-is-that-class-nothing-more). On a
+component row it shows every class containing that component. `Active rules` says which:
 
 | `Active rules` says | You soloed |
 |---|---|
-| `[i] Showing only CD3: CD8 and any class containing all of its parts. Everything else is hidden.` | a class row that has supersets in this image, so `CD3: CD8: PD1` is on screen too |
+| `[i] Showing only CD3: CD8. Everything else is hidden.` | a class row |
 | `[i] Showing only classes containing CD8. Everything else is hidden.` | a component row |
-| `[i] Showing only CD3: CD8. Everything else is hidden.` | something that reaches nothing else -- `Exact matches only` is on, or the class has no supersets here |
+
+(If something outside the panel has turned `Exact matches only` off, a soloed class row says
+`... and any class containing all of its parts, because "Exact matches only" was turned off
+outside this panel.` instead, because that is then what it shows.)
 
 Three ways to undo it, in increasing scope: repeat the gesture on the same row; press the
 status strip's `Undo` button, which is labelled with what it will undo; or `Reset all`.
@@ -1465,11 +1416,10 @@ Expand **`Active rules`**. It has one row per rule, with columns `Rule`, `Source
 | `Status` | Means |
 |---|---|
 | `Listed above` | it has a row of its own in one of the lists |
-| `Matches classes listed above` | it has no row of its own, but it reaches objects that do. Normal on multiplexed data, where a rule for `CD8` reaches every `CD8: ...` class without being one; and normal for every `All` combination, which is never a class name |
-| `Matches nothing listed above` | it is in force and reaches nothing here -- most often a rule for a class this image does not carry |
-| `Limited by "Exact matches only"` | the QuPath setting is on and this rule cannot match |
+| `Matches classes listed above` | it has no row of its own, but it reaches objects that do. Only seen when something outside the panel has turned `Exact matches only` off, so a rule reaches supersets again |
+| `Matches nothing listed above` | it is in force and reaches nothing here -- most often a rule for a class this image does not carry, or a component rule's class that only an object type outside `List` carries |
 
-The middle two are what a rule **reaches**, not whether its name appears in the classes list.
+The last two are what a rule **reaches**, not whether its name appears in the classes list.
 Through 0.1.2 they were the latter, which on combinatorial class names called a great many
 working rules inert -- see the [0.2.0 entry in the changelog](../CHANGELOG.md#020).
 
@@ -1738,7 +1688,7 @@ difference decides what comes back after a restart.
 | Setting | Owned by | Survives restart | Scope |
 |---|---|---|---|
 | `Hide checked classes` / `Show only checked classes` | QuPath | **yes** | global, but the panel sets it to `Show only checked classes` every time it opens |
-| `Exact matches only` | QuPath | **yes** | global |
+| `Exact matches only` | QuPath | **yes** | global, but the panel turns it on at your first change and puts yours back when it closes |
 | `Cell display` | QuPath | **yes** | global -- set it in QuPath's `View` menu; the panel only points at it |
 | Which classes are checked (your rules) | QuPath | **no** -- cleared when the panel opens, and put back when it closes | global for the session |
 | Saved presets | the panel | **yes**, in the project | one set per project, shared with anyone who opens it |
@@ -1790,10 +1740,15 @@ Two of these are deliberate omissions rather than oversights:
 
 ## Troubleshooting
 
-**I checked a component row and nothing happened.**
-`Exact matches only` is on. The component half of the panel will be greyed out, with a
-warning strip and a `Turn off` button. See
-[One QuPath setting can switch the component list off](#one-qupath-setting-can-switch-the-component-list-off).
+**I checked `PanCK` in the classes list and `PanCK: Ki67` stayed hidden.**
+That is what a class row does: it is a rule for that exact class. To reach every class
+containing `PanCK`, check `PanCK` in the **Components** list. See
+[A checked class is that class, nothing more](#a-checked-class-is-that-class-nothing-more).
+
+**After closing the panel, QuPath's own class list matches differently.**
+It should not: closing puts your own `Exact matches only` back. While the panel is open,
+though, that QuPath setting is on, so a class selected in the Annotations tab matches that
+class alone.
 
 **Everything vanished when I opened the panel.**
 That is how it opens: `Show only checked classes` with nothing checked, so that you check your
@@ -1842,11 +1797,10 @@ matches on its own.
 It did, in the old script -- that was a substring match, and it was a bug. QuPath compares
 whole names now. See [Coming from the script](migration-from-the-script.md).
 
-**QuPath's Annotations pane shows nothing selected but objects are hidden.**
-You are in `All` mode, and the combined class is not in QuPath's list of available classes,
-so there is no row for QuPath to highlight. Expected -- see
+**QuPath's Annotations pane shows classes selected that I never ticked.**
+A component rule is written as one rule per class it covers, so those classes are selected in
+QuPath's list too. Expected -- see
 [One thing to expect in QuPath's Annotations pane](#one-thing-to-expect-in-qupaths-annotations-pane).
-The panel's `Active rules` expander shows it, and `Reset all` clears it.
 
 **A class I checked has vanished from the list.**
 It is absent from the current image. The rule is still in force. See
@@ -1861,9 +1815,7 @@ changes it.
 
 **The counts do not match my measurement table.**
 Check the `List` scope. `Detections` is the default, and a measurement table showing cells,
-annotations or every object will not agree with it. If you turned on `Affects` in the classes list,
-that is a different number from `Count` -- see [`Count` and `Affects`](#count-and-affects).
-The components list's `Total` is not a per-class number either: it counts every object
+annotations or every object will not agree with it. The components list's `Total` is not a per-class number either: it counts every object
 carrying the component anywhere in its class. If a column header reads
 `Count (stale)` or `Total (stale)`, a recount is on its way and the numbers you are reading are the previous
 run's.
@@ -1942,6 +1894,9 @@ import qupath.lib.objects.classes.PathClass
 def options = getCurrentViewer().getOverlayOptions()
 
 // Hide every class containing both CD3 and CD8 -- the "All" combination, from a script.
+// This relies on "Exact matches only" being off, QuPath's default. The panel turns it on
+// while it is open, and then this one entry reaches the exact class "CD3: CD8" alone.
+options.setUseExactSelectedClasses(false)
 options.selectedClassesProperty().add(PathClass.fromCollection(["CD3", "CD8"]))
 options.setSelectedClassVisibilityMode(OverlayOptions.ClassVisibilityMode.HIDE_SELECTED)
 
@@ -1961,7 +1916,8 @@ the source `Set elsewhere`.
 **With one exception, and it is the one to know: opening the panel clears the set, and closing
 it puts the set back.** The panel's opening state is `Show only checked classes` with nothing
 checked, so rules a script set beforehand are gone the moment you press the toolbar button --
-and they return the moment you close it, along with the mode, the exact-match flag, opacity,
+and they return the moment you close it, along with the mode, the exact-match flag (which the
+panel turns on at your first change), opacity,
 the cell display and the object-type toggles. Two consequences for a script:
 
 - **Open the panel first and run the script second** if you want to see the script's rules in
@@ -1974,13 +1930,13 @@ the cell display and the object-type toggles. Two consequences for a script:
 
 Three things to know before you script it:
 
-- The matching rules are the ones described in
-  [What a checked class row acts on](#what-a-checked-class-row-acts-on): adding `CD3: CD8`
-  to that set also affects every class carrying both parts, unless
-  `setUseExactSelectedClasses(true)` is on.
+- **`setUseExactSelectedClasses` decides what an entry reaches.** Off, adding `CD3: CD8` to
+  that set also affects every class carrying both parts; on, it affects `CD3: CD8` alone.
+  The panel works with it on and writes a component rule as every matching class, one entry
+  each; a script can do either, but should say which it assumes rather than inherit it.
 - **Adding several classes separately means "any of these", not "all of them together".** For
-  an `All` combination, build one composite with `PathClass.fromCollection` as above, rather
-  than adding the parts one at a time.
+  an `All` combination with exact matching off, build one composite with
+  `PathClass.fromCollection` as above, rather than adding the parts one at a time.
 - **`SHOW_SELECTED` with an empty set hides every object**, and the mode is a saved preference
   while the set is not. A script that leaves that pair behind is the state this panel exists to
   catch; end with `HIDE_SELECTED`, as the snippet's last two lines do.

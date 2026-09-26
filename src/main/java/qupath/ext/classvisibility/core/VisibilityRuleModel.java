@@ -14,20 +14,23 @@ import java.util.TreeSet;
  * The rule state machine: checked classes plus a component rule, reconciled against
  * QuPath's shared {@code selectedClasses} set as a <b>minimal delta</b>.
  *
+ * <p>The panel runs QuPath with {@code Exact matches only} on, so a checked class matches that
+ * class alone. A component rule therefore cannot be one entry -- under exact matching the entry
+ * {@code PanCK} would reach only objects classed exactly {@code PanCK} -- and is instead
+ * <b>expanded</b> into every known class it covers, supplied by {@link #setKnownClasses}.</p>
+ *
  * <p>Three rules, all load-bearing, all verified against QuPath 0.7 source:</p>
  * <ol>
  *   <li><b>Never hand-roll a {@link PathClass}.</b> Exact rules write back the harvested
- *       instance; component rules go through {@link PathClass#fromCollection(Collection)},
- *       which interns (and, for one element, delegates to {@code getInstance}). QuPath's
+ *       instance, and component rules write back known (harvested) classes. QuPath's
  *       {@code isSelectedClass} is an identity/equality lookup on the set, so a reconstructed
  *       instance would silently fail to match.</li>
- *   <li><b>{@code Any} is N entries; {@code All} is ONE composite.</b> {@code selectedClasses}
- *       is evaluated as an OR over its elements, so N separate entries give OR. AND requires
- *       collapsing the checked components into a single composite via {@code fromCollection}.
- *       {@code fromCollection} builds in <i>iterator order</i>, so {@code ["CD3","CD4"]} and
- *       {@code ["CD4","CD3"]} intern to two different instances -- the token list is therefore
- *       sorted before every build, and the previously-added instance is kept in
- *       {@code ownedEntries} so the stale composite is removed rather than orphaned.</li>
+ *   <li><b>{@code Any} and {@code All} differ only in which classes they expand to.</b>
+ *       {@code selectedClasses} is evaluated as an OR over its elements. {@code Any} writes
+ *       every class containing at least one checked component; {@code All}, every class
+ *       containing all of them. Coverage is decided by {@link ClassCensus#ruleMatches}, the
+ *       viewer's own containment predicate, so the expansion cannot drift from what the
+ *       viewer would have matched with exact matching off.</li>
  *   <li><b>Minimal delta, always.</b> Only entries this model owns are ever removed. QuPath's
  *       own Classes pane writes the same set; a {@code clear()} plus {@code addAll()} would
  *       destroy its entries, and each element change also runs one uncoalesced overlay-cache
@@ -71,9 +74,9 @@ public final class VisibilityRuleModel {
 
     /** How two or more checked components combine into rules. */
     public enum Combination {
-        /** OR: each checked component becomes its own entry. First-run default. */
+        /** OR: classes carrying any checked component. First-run default. */
         ANY,
-        /** AND: the checked components collapse into one composite entry. */
+        /** AND: only classes carrying every checked component. */
         ALL
     }
 
@@ -115,6 +118,9 @@ public final class VisibilityRuleModel {
     /** Component names checked in the component list. */
     private final Set<String> componentSelections = new LinkedHashSet<>();
 
+    /** The classes a component rule can expand to: every class on an object in the image. */
+    private final Set<PathClass> knownClasses = new LinkedHashSet<>();
+
     /** Every entry this model last wrote, so a later delta can remove exactly those. */
     private final Set<PathClass> ownedEntries = new LinkedHashSet<>();
 
@@ -154,6 +160,29 @@ public final class VisibilityRuleModel {
         return applying;
     }
 
+    /**
+     * Replace the classes a component rule expands to. Re-applies when that changes what the
+     * checked components write, so a class that appears mid-session (a classifier run) is
+     * picked up without a click.
+     *
+     * @param classes the known classes; null is treated as none. Unclassified is ignored, since
+     *                no component can reach it.
+     */
+    public void setKnownClasses(Collection<PathClass> classes) {
+        Set<PathClass> before = componentEntries();
+        knownClasses.clear();
+        if (classes != null) {
+            for (PathClass pathClass : classes) {
+                if (pathClass != null && pathClass != PathClass.NULL_CLASS) {
+                    knownClasses.add(pathClass);
+                }
+            }
+        }
+        if (!componentSelections.isEmpty() && !before.equals(componentEntries())) {
+            apply();
+        }
+    }
+
     /** @return the {@code Any} / {@code All} setting. */
     public Combination getCombination() {
         return combination;
@@ -161,8 +190,8 @@ public final class VisibilityRuleModel {
 
     /**
      * Switch between {@code Any} and {@code All}. At zero or one checked component the two are
-     * identical and no delta results; from two components up, this swaps N entries for one
-     * composite or the reverse.
+     * identical and no delta results; from two components up, this narrows or widens the set of
+     * classes written.
      *
      * @param value the new combination
      */
@@ -288,7 +317,7 @@ public final class VisibilityRuleModel {
 
     /**
      * Leave exactly one component as the only rule, and switch to "show only checked classes".
-     * One component is one entry under either combination, so {@code Any} / {@code All} is
+     * With one component {@code Any} and {@code All} expand identically, so the combination is
      * irrelevant here.
      *
      * @param component the component to isolate
@@ -320,7 +349,8 @@ public final class VisibilityRuleModel {
         if (source == RuleSource.COMPONENTS_ALL) {
             componentSelections.clear();
         } else if (source == RuleSource.COMPONENTS_ANY) {
-            componentSelections.removeIf(token -> PathClass.fromCollection(List.of(token)) == entry);
+            // One class can come from several components; the rule only goes if all of them do.
+            componentSelections.removeIf(token -> expandToken(token).contains(entry));
         }
         pendingDrops.add(entry);
         apply();
@@ -393,13 +423,15 @@ public final class VisibilityRuleModel {
         }
         Set<PathClass> current = target.selectedClasses();
         exactSelections.retainAll(current);
-        if (!componentSelections.isEmpty() && !current.containsAll(componentEntries())) {
-            if (combination == Combination.ALL) {
-                // The composite is one indivisible entry: if it has gone, the rule has gone.
-                componentSelections.clear();
+        // A component rule is withdrawn only when every class it wrote has gone. Removing one
+        // of them elsewhere is a narrowing the user made on purpose; the next apply restores it.
+        if (!componentSelections.isEmpty()) {
+            if (combination == Combination.ALL && componentSelections.size() > 1) {
+                if (noneRemain(componentEntries(), current)) {
+                    componentSelections.clear();
+                }
             } else {
-                componentSelections.removeIf(
-                        token -> !current.contains(PathClass.fromCollection(List.of(token))));
+                componentSelections.removeIf(token -> noneRemain(expandToken(token), current));
             }
         }
         ownedEntries.retainAll(current);
@@ -447,8 +479,16 @@ public final class VisibilityRuleModel {
                 toAdd.add(entry);
             }
         }
+        // The known classes may have moved since the capture, so the component rule is
+        // re-expanded rather than trusted: additions only, nothing captured is removed.
+        for (PathClass entry : componentEntries()) {
+            if (!state.entries().contains(entry) && !toAdd.contains(entry)) {
+                toAdd.add(entry);
+            }
+        }
         ownedEntries.clear();
         ownedEntries.addAll(state.entries());
+        ownedEntries.addAll(toAdd);
         pendingDrops.clear();
         writeDelta(toRemove, toAdd);
         changeListener.run();
@@ -466,8 +506,8 @@ public final class VisibilityRuleModel {
     }
 
     /**
-     * @return the entries the component rule contributes: one per component under {@code Any},
-     *         a single sorted composite under {@code All}
+     * @return the entries the component rule contributes: every known class containing any
+     *         checked component under {@code Any}, all of them under {@code All}
      */
     private Set<PathClass> componentEntries() {
         return componentEntriesFor(combination);
@@ -484,28 +524,46 @@ public final class VisibilityRuleModel {
             return Set.of();
         }
         if (as == Combination.ALL && componentSelections.size() > 1) {
-            PathClass composite = compositeEntry();
-            return composite == null ? Set.of() : Set.of(composite);
+            // fromCollection builds in iterator order, so the order is fixed first; the
+            // composite is only a matching key here and is never written.
+            return expand(PathClass.fromCollection(new ArrayList<>(new TreeSet<>(componentSelections))));
         }
         Set<PathClass> entries = new LinkedHashSet<>();
         for (String token : componentSelections) {
-            entries.add(PathClass.fromCollection(List.of(token)));
+            entries.addAll(expandToken(token));
         }
         return entries;
     }
 
     /**
-     * @return the interned {@code All} composite for the current component selection, built from
-     *         a deterministically sorted token list; null when fewer than two components are
-     *         checked
+     * @param token one component name
+     * @return every known class containing it
      */
-    private PathClass compositeEntry() {
-        if (componentSelections.size() < 2) {
-            return null;
+    private Set<PathClass> expandToken(String token) {
+        return expand(PathClass.fromCollection(List.of(token)));
+    }
+
+    /**
+     * @param key a component, or a composite of several
+     * @return every known class the key reaches by containment, in known-class order
+     */
+    private Set<PathClass> expand(PathClass key) {
+        Set<PathClass> entries = new LinkedHashSet<>();
+        for (PathClass candidate : knownClasses) {
+            if (ClassCensus.ruleMatches(key, candidate, false)) {
+                entries.add(candidate);
+            }
         }
-        // fromCollection builds in iterator order, so the order must be fixed before the call or
-        // two different instances result for the same component set.
-        return PathClass.fromCollection(new ArrayList<>(new TreeSet<>(componentSelections)));
+        return entries;
+    }
+
+    /**
+     * @param entries what one component rule wrote
+     * @param current the live set
+     * @return whether the rule wrote something and none of it is left
+     */
+    private static boolean noneRemain(Set<PathClass> entries, Set<PathClass> current) {
+        return !entries.isEmpty() && entries.stream().noneMatch(current::contains);
     }
 
     /** Mark every current entry for removal, so the next apply() leaves nothing behind. */

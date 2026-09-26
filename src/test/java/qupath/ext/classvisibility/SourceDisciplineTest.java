@@ -318,18 +318,17 @@ class SourceDisciplineTest {
 
         assertThat(protectedControls)
                 .as("every fixed-label control on the Find row")
-                .contains("findLabel", "clearFindButton", "exactCheck");
+                .contains("findLabel", "clearFindButton");
         assertThat(protectedControls)
                 .as("every fixed-label control on the preset row, scopeCombo included -- it "
                         + "stopped being an absorber when it moved onto a row that already had one")
                 .contains("presetLabel", "presetSaveButton", "presetDeleteButton",
                         "scopeLabel", "scopeCombo");
         assertThat(DELIBERATE_ABSORBERS)
-                .as("neither may be excused as an absorber: a checkbox and a three-value combo "
-                        + "are their own labels")
-                .doesNotContain("exactCheck", "scopeCombo");
+                .as("it may not be excused as an absorber: a three-value combo is its own label")
+                .doesNotContain("scopeCombo");
         // Growers are counted by name rather than in total: there are legitimate ones on other
-        // rows (the image label, the exact-match warning, the status text, and findRow itself
+        // rows (the image label, the status text, and findRow itself
         // inside filterRow), so a global count would be an assertion about the wrong thing.
         Set<String> growers = new LinkedHashSet<>();
         Matcher grower = Pattern.compile("HBox\\.setHgrow\\((\\w+),").matcher(pane);
@@ -349,7 +348,7 @@ class SourceDisciplineTest {
                         + "slack is no longer going where it was meant to")
                 .doesNotContain("presetLabel", "presetSaveButton", "presetDeleteButton",
                         "scopeLabel", "scopeCombo", "scopeRow",
-                        "findLabel", "clearFindButton", "exactCheck",
+                        "findLabel", "clearFindButton",
                         "modeLabel", "hideRadio", "showOnlyRadio");
         assertThat(growers)
                 .as("the visibility-rule row's own absorber is the note")
@@ -495,27 +494,18 @@ class SourceDisciplineTest {
     }
 
     /**
-     * Moving "Exact matches only" onto the Find row must not cost the R1 interlock.
-     *
-     * <p>It is QuPath's persistent {@code useExactSelectedClasses} preference, and while it is on
-     * no component rule can match anything -- so the panel greys the entire component list and
-     * says why, in a banner with a {@code Turn off} button. That wiring hangs off the checkbox,
-     * not off the container holding it, and this pins all three legs of it so a later layout move
-     * cannot quietly take the explanation with it.</p>
+     * The class list is exact only while QuPath's {@code useExactSelectedClasses} is on, so the
+     * panel turns it on at the first change -- after the opening snapshot, so closing the panel
+     * still restores the user's own value -- and follows it if something else turns it off.
      */
     @Test
-    void theExactMatchesInterlockSurvivesTheLayoutMove() throws IOException {
+    void exactMatchingIsTurnedOnAfterTheOpeningSnapshot() throws IOException {
         String pane = Files.readString(MAIN_SOURCES.resolve(Path.of("qupath", "ext",
                 "classvisibility", "ui", "ClassVisibilityPane.java")), StandardCharsets.UTF_8);
-        assertThat(pane)
-                .as("the component list goes inert while exact matching is on")
-                .contains("componentPane.setDisable(Boolean.TRUE.equals(newValue))")
-                .as("and again on the initial paint, not only on the next change")
-                .contains("componentPane.setDisable(exactCheck.isSelected())");
-        assertThat(pane)
-                .as("the banner explaining the inert list follows the same checkbox")
-                .contains("exactWarningBox.visibleProperty().bind(exactCheck.selectedProperty())")
-                .contains("exactWarningBox.managedProperty().bind(exactCheck.selectedProperty())");
+        int capture = pane.indexOf("VisibilityStateStore.captureIfAbsent(options);");
+        int exactOn = pane.indexOf("options.setUseExactSelectedClasses(true);");
+        assertThat(capture).as("the opening snapshot is taken").isPositive();
+        assertThat(exactOn).as("exact matching is switched on after it").isGreaterThan(capture);
         assertThat(pane)
                 .as("QuPath owns the value; the panel must still follow a change made elsewhere")
                 .contains("options.useExactSelectedClassesProperty().addListener(exactListener)");

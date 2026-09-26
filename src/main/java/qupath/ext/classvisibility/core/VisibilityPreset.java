@@ -32,8 +32,8 @@ import java.util.Set;
  * cannot collide with the name of a real class the way {@code "Unclassified"} could.</p>
  *
  * <h2>What a preset captures, and what it does not</h2>
- * <p>It captures the <b>viewer state</b> -- the class rule set, the visibility mode, the exact
- * flag, the cell display mode, overlay opacity and the per-type show/fill booleans -- and the
+ * <p>It captures the <b>viewer state</b> -- the class rule set, the visibility mode, the cell
+ * display mode, overlay opacity and the per-type show/fill booleans -- and the
  * <b>panel state</b>: which classes and which components were checked, and whether components
  * combined as Any or All.</p>
  *
@@ -74,7 +74,6 @@ public final class VisibilityPreset {
     private VisibilityRuleModel.Combination combination = VisibilityRuleModel.Combination.ANY;
     private OverlayOptions.ClassVisibilityMode visibilityMode =
             OverlayOptions.ClassVisibilityMode.HIDE_SELECTED;
-    private boolean useExactSelectedClasses;
     private OverlayOptions.DetectionDisplayMode cellDisplayMode;
     private float opacity = 1f;
 
@@ -112,7 +111,6 @@ public final class VisibilityPreset {
         preset.checkedComponents = new ArrayList<>(state.components());
         preset.combination = state.combination();
         preset.visibilityMode = options.getSelectedClassVisibilityMode();
-        preset.useExactSelectedClasses = options.getUseExactSelectedClasses();
         preset.cellDisplayMode = options.getDetectionDisplayMode();
         preset.opacity = options.getOpacity();
         preset.showDetections = options.getShowDetections();
@@ -141,7 +139,9 @@ public final class VisibilityPreset {
         options.setSelectedClassVisibilityMode(visibilityMode == null
                 ? OverlayOptions.ClassVisibilityMode.HIDE_SELECTED
                 : visibilityMode);
-        options.setUseExactSelectedClasses(useExactSelectedClasses);
+        // Not stored: the panel always runs with it on, since that is what makes a checked class
+        // mean that class alone. A preset saved before 0.4.0 carries the old flag; it is ignored.
+        options.setUseExactSelectedClasses(true);
         if (cellDisplayMode != null) {
             options.setDetectionDisplayMode(cellDisplayMode);
         }

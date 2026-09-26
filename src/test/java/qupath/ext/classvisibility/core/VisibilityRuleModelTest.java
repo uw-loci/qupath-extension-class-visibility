@@ -64,59 +64,88 @@ class VisibilityRuleModelTest {
         assertThat(selected).isEmpty();
     }
 
-    // --- Any / All ----------------------------------------------------------------------------
+    // --- Any / All ---------------------------------------------------------------------------
+
+    /** The classes in the image, which a component rule expands to. */
+    private static final List<PathClass> KNOWN = List.of(
+            pc("CD3"), pc("CD8"), pc("CD3", "CD8"), pc("PanCK", "CD3", "CD8"),
+            pc("CD4", "CD8"), pc("CD4"), pc("PanCK"));
 
     @Test
-    void anyGivesOneEntryPerCheckedComponent() {
+    void aComponentIsWrittenAsEveryKnownClassContainingIt() {
+        // Under exact matching the bare entry CD3 reaches only objects classed exactly CD3, so
+        // the rule is the list of classes it covers -- wherever CD3 sits in the name.
+        model.setKnownClasses(KNOWN);
         model.setComponentSelected("CD3", true);
-        model.setComponentSelected("CD8", true);
-        assertThat(selected).containsExactlyInAnyOrder(pc("CD3"), pc("CD8"));
+        assertThat(selected).containsExactlyInAnyOrder(
+                pc("CD3"), pc("CD3", "CD8"), pc("PanCK", "CD3", "CD8"));
     }
 
     @Test
-    void allGivesOneCompositeEntry() {
-        model.setCombination(VisibilityRuleModel.Combination.ALL);
+    void anyWritesTheUnionOfTheCheckedComponents() {
+        model.setKnownClasses(KNOWN);
         model.setComponentSelected("CD3", true);
-        model.setComponentSelected("CD8", true);
-        assertThat(selected).containsExactly(pc("CD3", "CD8"));
-        assertThat(selected.iterator().next().isDerivedClass()).isTrue();
+        model.setComponentSelected("CD4", true);
+        assertThat(selected).containsExactlyInAnyOrder(
+                pc("CD3"), pc("CD3", "CD8"), pc("PanCK", "CD3", "CD8"), pc("CD4", "CD8"), pc("CD4"));
     }
 
     @Test
-    void compositeIsBuiltFromASortedTokenListSoCheckOrderDoesNotMatter() {
-        // fromCollection builds in iterator order, so ["CD3","CD8"] and ["CD8","CD3"] intern to
-        // two different instances. Checking in reverse order must still produce -- and later
-        // remove -- the same one.
+    void allWritesOnlyClassesCarryingEveryCheckedComponent() {
+        model.setKnownClasses(KNOWN);
         model.setCombination(VisibilityRuleModel.Combination.ALL);
         model.setComponentSelected("CD8", true);
         model.setComponentSelected("CD3", true);
-        assertThat(selected).containsExactly(pc("CD3", "CD8"));
+        assertThat(selected).containsExactlyInAnyOrder(pc("CD3", "CD8"), pc("PanCK", "CD3", "CD8"));
 
         model.setComponentSelected("CD3", false);
-        assertThat(selected).containsExactly(pc("CD8"));
+        assertThat(selected).containsExactlyInAnyOrder(
+                pc("CD8"), pc("CD3", "CD8"), pc("PanCK", "CD3", "CD8"), pc("CD4", "CD8"));
     }
 
     @Test
-    void switchingBetweenAnyAndAllSwapsTheEntriesAndLeavesNoStaleComposite() {
+    void switchingBetweenAnyAndAllLeavesNothingStaleBehind() {
+        model.setKnownClasses(KNOWN);
         model.setComponentSelected("CD3", true);
-        model.setComponentSelected("CD8", true);
-        assertThat(selected).containsExactlyInAnyOrder(pc("CD3"), pc("CD8"));
+        model.setComponentSelected("CD4", true);
+        Set<PathClass> underAny = new LinkedHashSet<>(selected);
 
         model.setCombination(VisibilityRuleModel.Combination.ALL);
-        assertThat(selected).containsExactly(pc("CD3", "CD8"));
+        assertThat(selected).as("no known class carries both").isEmpty();
 
         model.setCombination(VisibilityRuleModel.Combination.ANY);
-        assertThat(selected).containsExactlyInAnyOrder(pc("CD3"), pc("CD8"));
-        // A stale composite left behind would silently keep hiding objects with no row anywhere.
-        assertThat(selected).doesNotContain(pc("CD3", "CD8"));
+        assertThat(selected).isEqualTo(underAny);
     }
 
     @Test
     void anyAndAllAreIdenticalBelowTwoCheckedComponents() {
-        model.setComponentSelected("CD8", true);
+        model.setKnownClasses(KNOWN);
+        model.setComponentSelected("CD4", true);
         Set<PathClass> underAny = new LinkedHashSet<>(selected);
         model.setCombination(VisibilityRuleModel.Combination.ALL);
-        assertThat(selected).isEqualTo(underAny).containsExactly(pc("CD8"));
+        assertThat(selected).isEqualTo(underAny).containsExactlyInAnyOrder(pc("CD4"), pc("CD4", "CD8"));
+    }
+
+    @Test
+    void aClassThatAppearsLaterIsPickedUpWithoutAClick() {
+        model.setKnownClasses(List.of(pc("PanCK")));
+        model.setComponentSelected("PanCK", true);
+        assertThat(selected).containsExactly(pc("PanCK"));
+
+        model.setKnownClasses(List.of(pc("PanCK"), pc("PanCK", "Ki67")));
+        assertThat(selected).containsExactlyInAnyOrder(pc("PanCK"), pc("PanCK", "Ki67"));
+
+        model.setKnownClasses(List.of(pc("PanCK", "Ki67")));
+        assertThat(selected).containsExactly(pc("PanCK", "Ki67"));
+    }
+
+    @Test
+    void aCheckedClassAndACoveringComponentShareAnEntryWithoutLosingIt() {
+        model.setKnownClasses(KNOWN);
+        model.setClassSelected(pc("CD3", "CD8"), true);
+        model.setComponentSelected("CD3", true);
+        model.setComponentSelected("CD3", false);
+        assertThat(selected).as("the class tick outlives the component").containsExactly(pc("CD3", "CD8"));
     }
 
     // --- Minimal delta ------------------------------------------------------------------------
@@ -181,9 +210,10 @@ class VisibilityRuleModelTest {
 
     @Test
     void soloingAComponentIgnoresTheCombinationSetting() {
+        model.setKnownClasses(KNOWN);
         model.setCombination(VisibilityRuleModel.Combination.ALL);
-        model.soloComponent("CD8");
-        assertThat(selected).containsExactly(pc("CD8"));
+        model.soloComponent("CD4");
+        assertThat(selected).containsExactlyInAnyOrder(pc("CD4"), pc("CD4", "CD8"));
     }
 
     /**
@@ -218,11 +248,12 @@ class VisibilityRuleModelTest {
     void ruleSourceDistinguishesOurEntriesFromEntriesWrittenElsewhere() {
         PathClass foreign = pc("Foreign");
         selected.add(foreign);
+        model.setKnownClasses(KNOWN);
         model.setClassSelected(pc("CD3"), true);
         model.setComponentSelected("CD8", true);
 
         assertThat(model.sourceOf(pc("CD3"))).isEqualTo(VisibilityRuleModel.RuleSource.CLASS);
-        assertThat(model.sourceOf(pc("CD8"))).isEqualTo(VisibilityRuleModel.RuleSource.COMPONENTS_ANY);
+        assertThat(model.sourceOf(pc("CD4", "CD8"))).isEqualTo(VisibilityRuleModel.RuleSource.COMPONENTS_ANY);
         assertThat(model.sourceOf(foreign)).isEqualTo(VisibilityRuleModel.RuleSource.ELSEWHERE);
 
         model.setComponentSelected("CD4", true);
@@ -245,26 +276,43 @@ class VisibilityRuleModelTest {
     // --- External writes and snapshots --------------------------------------------------------
 
     @Test
-    void externalRemovalUnchecksTheCorrespondingComponent() {
-        model.setComponentSelected("CD8", true);
-        assertThat(model.isComponentSelected("CD8")).isTrue();
-        selected.remove(pc("CD8"));
+    void externalRemovalUnchecksAComponentOnlyOnceEverythingItWroteHasGone() {
+        model.setKnownClasses(KNOWN);
+        model.setComponentSelected("CD4", true);
+        selected.remove(pc("CD4"));
         model.onExternalChange();
-        assertThat(model.isComponentSelected("CD8")).isFalse();
+        assertThat(model.isComponentSelected("CD4")).as("CD4: CD8 is still in force").isTrue();
+        selected.remove(pc("CD4", "CD8"));
+        model.onExternalChange();
+        assertThat(model.isComponentSelected("CD4")).isFalse();
     }
 
     @Test
-    void externalRemovalOfTheCompositeClearsTheWholeComponentRule() {
+    void externalRemovalOfEveryAllClassClearsTheWholeComponentRule() {
+        model.setKnownClasses(KNOWN);
         model.setCombination(VisibilityRuleModel.Combination.ALL);
         model.setComponentSelected("CD3", true);
         model.setComponentSelected("CD8", true);
         selected.remove(pc("CD3", "CD8"));
+        selected.remove(pc("PanCK", "CD3", "CD8"));
         model.onExternalChange();
         assertThat(model.getSelectedComponents()).isEmpty();
     }
 
     @Test
+    void removingOneComponentClassFromTheRulesTableDropsTheComponentsBehindIt() {
+        model.setKnownClasses(KNOWN);
+        model.setComponentSelected("CD3", true);
+        model.setComponentSelected("CD4", true);
+        model.removeRule(pc("CD4", "CD8"));
+        assertThat(model.getSelectedComponents()).containsExactly("CD3");
+        assertThat(selected).containsExactlyInAnyOrder(
+                pc("CD3"), pc("CD3", "CD8"), pc("PanCK", "CD3", "CD8"));
+    }
+
+    @Test
     void captureAndRestoreRoundTripsRulesAndCombination() {
+        model.setKnownClasses(KNOWN);
         model.setClassSelected(pc("CD3"), true);
         model.setComponentSelected("CD8", true);
         model.setComponentSelected("CD4", true);
@@ -278,6 +326,7 @@ class VisibilityRuleModelTest {
         model.restoreState(state);
         assertThat(selected).containsExactlyInAnyOrder(pc("CD3"), pc("CD4", "CD8"));
         assertThat(model.getCombination()).isEqualTo(VisibilityRuleModel.Combination.ALL);
+        assertThat(model.sourceOf(pc("CD4", "CD8"))).isEqualTo(VisibilityRuleModel.RuleSource.COMPONENTS_ALL);
         assertThat(model.getSelectedComponents()).containsExactlyInAnyOrder("CD4", "CD8");
     }
 
@@ -297,15 +346,17 @@ class VisibilityRuleModelTest {
 
     @Test
     void componentEntriesForEitherCombination() {
+        model.setKnownClasses(KNOWN);
         model.setComponentSelected("CD8", true);
         model.setComponentSelected("CD3", true);
         Set<PathClass> before = new LinkedHashSet<>(selected);
 
         assertThat(model.componentEntriesFor(VisibilityRuleModel.Combination.ANY))
-                .containsExactlyInAnyOrder(pc("CD3"), pc("CD8"));
+                .containsExactlyInAnyOrder(pc("CD3"), pc("CD8"), pc("CD3", "CD8"),
+                        pc("PanCK", "CD3", "CD8"), pc("CD4", "CD8"));
         assertThat(model.componentEntriesFor(VisibilityRuleModel.Combination.ALL))
-                .as("the same sorted composite the model writes under All")
-                .containsExactly(PathClass.fromCollection(List.of("CD3", "CD8")));
+                .as("the classes the model writes under All, whatever the check order")
+                .containsExactlyInAnyOrder(pc("CD3", "CD8"), pc("PanCK", "CD3", "CD8"));
         assertThat(selected).isEqualTo(before);
         assertThat(model.getCombination()).isEqualTo(VisibilityRuleModel.Combination.ANY);
     }

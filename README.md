@@ -3,7 +3,7 @@
 Show or hide QuPath objects by class, or by one component of a class name, from a floating
 panel you can dock into QuPath's analysis pane.
 
-A QuPath 0.7 extension, version 0.3.3. It is a port of the community Groovy script
+A QuPath 0.7 extension, version 0.4.0. It is a port of the community Groovy script
 *"Show specific classes of objects v3"* ([image.sc topic 31828](https://forum.image.sc/t/31828)),
 which stopped working when `OverlayOptions.hiddenClassesProperty()` was removed.
 
@@ -49,6 +49,10 @@ of overlapping supersets. Everything the panel adds exists because of that shape
   together is one rule here; in the built-in pane it is a manual hunt for whichever seven of
   your thirty class names happen to carry all three, repeated by hand on the next image.
   Nothing else in QuPath expresses it, although the matching engine underneath supports it.
+- **exact classes and contained markers side by side**. Checking `PanCK` in the classes list
+  acts on objects classed exactly `PanCK`; checking the `PanCK` component acts on every class
+  containing it. In the built-in pane, one QuPath-wide setting ("exact class matches only")
+  decides which of those every row means.
 - a **`Spread` column** -- `26/28` beside `positive` -- because multiplex naming schemes put
   `positive`, `pos`, `neg` or `Cell` in nearly every class name, and on screen those look
   exactly like markers. The number tells you a component is a near-synonym for "everything"

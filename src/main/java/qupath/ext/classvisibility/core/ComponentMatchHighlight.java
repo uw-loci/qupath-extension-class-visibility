@@ -69,7 +69,7 @@ public final class ComponentMatchHighlight {
      * @param candidate a listed class; {@code null} is treated as Unclassified
      * @param exactMatchesOnly the current value of QuPath's {@code Exact matches only} setting
      * @return whether the component rule reaches objects of that class. The same predicate as
-     *         the {@code Affects} column and the {@code Active rules} statuses, so what is marked
+     *         the {@code Active rules} statuses, so what is marked
      *         is exactly what the rule acts on.
      */
     public static boolean covers(Collection<PathClass> componentEntries, PathClass candidate,

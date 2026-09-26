@@ -241,7 +241,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /** The label and both radios as one visual group, which is what the hint pulse glows. */
     private VBox combinationBox;
     private final RadioButton allRadio = new RadioButton();
-    private final CheckBox exactCheck = new CheckBox(Strings.get("check.exact"));
     private final CheckBox includeEmptyCheck = new CheckBox(Strings.get("check.includeEmpty"));
     private final ComboBox<ClassHarvester.Scope> scopeCombo = new ComboBox<>();
     /**
@@ -313,7 +312,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     private final Tooltip presetTooltip = new Tooltip(Strings.get("tooltip.presets"));
     private final HBox scopeRow = new HBox(GAP);
     private final HBox findRow = new HBox(GAP);
-    private final HBox exactWarningBox = new HBox(GAP);
     private final HBox statusButtons = new HBox(GAP);
     /** The always-visible strip. Out of the layout entirely when it has nothing to say. */
     private final VBox statusBox = new VBox(GAP);
@@ -771,21 +769,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         showOnlyRadio.setToggleGroup(modeGroup);
         hideRadio.setTooltip(new Tooltip(Strings.get("tooltip.radio.hide")));
         showOnlyRadio.setTooltip(new Tooltip(Strings.get("tooltip.radio.showOnly")));
-        exactCheck.setTooltip(new Tooltip(Strings.get("tooltip.check.exact")));
 
         modeRow.setAlignment(Pos.CENTER_LEFT);
 
-        Button turnOffExact = new Button(Strings.get("button.turnOff"));
-        turnOffExact.setTooltip(new Tooltip(Strings.get("tooltip.button.turnOff")));
-        turnOffExact.setOnAction(e -> exactCheck.setSelected(false));
-        Label exactWarningLabel = new Label(Strings.get("status.exactWarning"));
-        exactWarningLabel.setWrapText(true);
-        HBox.setHgrow(exactWarningLabel, Priority.ALWAYS);
-        exactWarningBox.getChildren().addAll(exactWarningLabel, turnOffExact);
-        exactWarningBox.setAlignment(Pos.CENTER_LEFT);
-        exactWarningBox.setPadding(new Insets(GAP, 0, GAP, 0));
-        exactWarningBox.visibleProperty().bind(exactCheck.selectedProperty());
-        exactWarningBox.managedProperty().bind(exactCheck.selectedProperty());
 
         scopeCombo.getItems().setAll(ClassHarvester.Scope.values());
         scopeCombo.setTooltip(new Tooltip(Strings.get("tooltip.scope")));
@@ -837,7 +823,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         filterRow.setAlignment(Pos.CENTER_LEFT);
 
         // Every control in a horizontally shrinkable row whose label IS the control. Two groups
-        // are deliberately absent. The wrapping ones -- exactWarningLabel, includeEmptyCheck,
+        // are deliberately absent. The wrapping ones -- includeEmptyCheck,
         // cellDisplayNote, the Any / All radios -- because a USE_PREF_SIZE minimum asks for the
         // whole text on one line, which is the opposite of wrapping. And the absorbers --
         // imageLabel (centre ellipsis plus a tooltip, by design), the scope combo, the find field
@@ -850,10 +836,6 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         //
         // Two joined in 0.2.1, when the header collapsed onto two rows.
         //
-        // exactCheck, because it moved onto the Find row: it does not wrap, its label is the
-        // whole control, and it is the widest fixed thing in the panel's tightest row --
-        // unprotected, it is the first control an over-subscribed Find row would turn into "...".
-        //
         // scopeCombo, because it STOPPED being an absorber. It shared the Find row's slack with
         // the find field until now; on the preset row it would share it with the preset combo,
         // and the two are not the same kind of control. This one has three fixed short values and
@@ -863,16 +845,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         // stacking decision a measurement rather than a guess.
         keepFullyReadable(headerToggle, helpButton, surfaceButton,
                 presetLabel, presetSaveButton, presetDeleteButton,
-                turnOffExact, exactCheck,
                 modeLabel, hideRadio, showOnlyRadio, cellDisplaySeparator,
                 scopeLabel, scopeCombo, findLabel, clearFindButton);
 
-        // exactWarningBox now sits BELOW filterBox, because since 0.2.1 the checkbox it is
-        // explaining lives in that row. A warning rendered above the control it refers to reads
-        // as being about the radios instead.
-        VBox header = new VBox(GAP, imageRow, presetRow, modeBox, filterBox, exactWarningBox);
-        // The exact-match warning is deliberately not collapsible: it is the only explanation for
-        // a greyed-out component list, and hiding it would leave that looking broken.
+        VBox header = new VBox(GAP, imageRow, presetRow, modeBox, filterBox);
         BooleanProperty expanded = ClassVisibilityPreferences.headerExpandedProperty();
         for (Node collapsible : List.of(presetRow, modeBox, filterBox)) {
             collapsible.visibleProperty().bind(expanded);
@@ -990,35 +966,15 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         countColumn.setId(COUNT_COLUMN_ID);
         nameAndExplain(countColumn, Strings.get("column.count"), Strings.get("tooltip.column.count"));
         // On by default since 0.3.3: how many CD3: CD8 cells there are is the number people read
-        // this list for (user, 2026-09-24). Where a click reaches further than that, the Count
-        // cell's own tooltip says by how much, and Affects is one click away in the menu button.
-
-        // The truth about the click. The Count column answers "how many objects carry this exact
-        // class"; with "Exact matches only" off -- the shipped default -- a click on the row acts
-        // on every class containing all of this one's parts as well, which on a combinatorial
-        // panel is routinely several times the number in Count. Finding S1: a count shown beside
-        // a control that acts on a different number is the one thing a counting UI must not do.
-        TableColumn<ClassRow, ClassRow> affectsColumn = new TableColumn<>();
-        affectsColumn.setPrefWidth(84);
-        affectsColumn.setMinWidth(60);
-        affectsColumn.setCellValueFactory(cd -> new javafx.beans.property.SimpleObjectProperty<>(cd.getValue()));
-        affectsColumn.setCellFactory(col -> new AffectsCell());
-        affectsColumn.setComparator(Comparator.comparingLong(
-                (ClassRow row) -> affectedObjects(row.pathClass())));
-        nameAndExplain(affectsColumn, Strings.get("column.affects"), Strings.get("tooltip.column.affects"));
-        affectsColumn.setVisible(false);
+        // this list for (user, 2026-09-24). Since 0.4.0 it is also exactly what a click on the
+        // row acts on, so the Affects column that used to sit beside it has gone.
 
         // No "Only" column. It cost 52px of a column in which "FoxP3 (Opal 570): 1+: ..." was
         // already being cut off, to save one click -- and once checking a row means "show this"
         // rather than "hide this", solo is no longer a different KIND of operation, just a faster
         // one. It survives as a double-click, a right-click item and the O key.
-        classTable.getColumns().setAll(List.of(checkColumn, nameColumn, countColumn,
-                affectsColumn));
+        classTable.getColumns().setAll(List.of(checkColumn, nameColumn, countColumn));
         installSoloGestures(classTable, ClassRow::displayName, this::soloClass);
-        // Affects is no longer dropped at narrow widths. It was, back when the class table
-        // carried four columns and the names had nothing left; with Count hidden by default the
-        // pressure is halved, and this is the number the whole S1 correction rests on -- hiding
-        // it to save 84px would take away the one thing on the row that says what the click does.
         classTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         classTable.setTableMenuButtonVisible(true);
         installHeaderTooltips(classTable);
@@ -1037,9 +993,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             return true;
         });
         // Default sort: with 28 classes the ones worth acting on are the populous ones, and an
-        // alphabetical sort buries a long derived name among its near-identical siblings. On
-        // Affects rather than Count since 0.2.0, because Count is now hidden by default and a
-        // table sorted by a column nobody can see is a table sorted for no stated reason.
+        // alphabetical sort buries a long derived name among its near-identical siblings.
         countColumn.setSortType(TableColumn.SortType.DESCENDING);
         classTable.getSortOrder().add(countColumn);
 
@@ -1385,7 +1339,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         scopeRow.getChildren().setAll(scopeLabel, scopeCombo);
         presetRow.getChildren().setAll(presetLabel, presetCombo, presetSaveButton,
                 presetDeleteButton, scopeRow);
-        findRow.getChildren().setAll(findLabel, findField, clearFindButton, exactCheck);
+        findRow.getChildren().setAll(findLabel, findField, clearFindButton);
         filterRow.getChildren().setAll(findRow);
         HBox.setHgrow(findRow, Priority.ALWAYS);
         filterBox.getChildren().setAll(filterRow);
@@ -1404,19 +1358,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         modeRow.getChildren().clear();
         modeBox.getChildren().setAll(modeLabel, hideRadio, showOnlyRadio, cellDisplayNote);
 
-        // Stacked, not on the Find row, and the number is measured rather than guessed. The
-        // checkbox is 152px that never shrinks, so in an HBox the find field pays for all of it:
-        // a probe of this exact row gives the field 98px at a 320px pane and 18px at 240px,
-        // against a 170px preferred. An 18px find field is not a narrower control, it is a gone
-        // one -- and Find is this panel's primary navigation at thirty near-identical class
-        // names, which is why focusFind() exists at all. Below about 390px the row cannot hold
-        // both, and the narrow profile runs to 580px, so it stacks throughout it.
-        //
-        // This costs nothing here: exactCheck had its own line in the narrow profile before the
-        // move too, under the radios. It has simply moved down to sit with the filter controls
-        // and directly above the warning it raises.
-        //
-        // "List:" stays off the preset row here for the same measured reason. That merged row's
+        // "List:" stays off the preset row here for a measured reason. That merged row's
         // floor is 386px -- the four preset controls at their own widths plus the scope combo's
         // 127px -- and below it the row does not ellipsise, it OVERFLOWS: "List:" and its combo
         // are pushed past the right edge of the panel and simply are not there. Silently absent
@@ -1426,7 +1368,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         filterRow.getChildren().clear();
         scopeRow.getChildren().setAll(scopeLabel, scopeCombo);
         findRow.getChildren().setAll(findLabel, findField, clearFindButton);
-        filterBox.getChildren().setAll(scopeRow, findRow, exactCheck);
+        filterBox.getChildren().setAll(scopeRow, findRow);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1460,25 +1402,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         };
         options.selectedClassVisibilityModeProperty().addListener(modeListener);
 
-        exactCheck.setSelected(options.getUseExactSelectedClasses());
-        exactCheck.selectedProperty().addListener((obs, oldValue, newValue) -> {
-            if (!updatingControls) {
-                beforeMutation();
-                options.setUseExactSelectedClasses(Boolean.TRUE.equals(newValue));
-            }
-            componentPane.setDisable(Boolean.TRUE.equals(newValue));
-            refreshRuleDependentUi();
-        });
-        exactListener = (obs, oldValue, newValue) -> {
-            updatingControls = true;
-            try {
-                exactCheck.setSelected(Boolean.TRUE.equals(newValue));
-            } finally {
-                updatingControls = false;
-            }
-        };
+        // The panel turns "Exact matches only" on itself, at the first change (beforeMutation).
+        // Something else can still turn it off -- then a class rule reaches supersets again,
+        // and every count, ring and status has to say so.
+        exactListener = (obs, oldValue, newValue) -> refreshRuleDependentUi();
         options.useExactSelectedClassesProperty().addListener(exactListener);
-        componentPane.setDisable(exactCheck.isSelected());
 
         scopeCombo.getSelectionModel().select(ClassVisibilityPreferences.scopeProperty().get());
         scopeCombo.getSelectionModel().selectedItemProperty().addListener((obs, oldValue, newValue) -> {
@@ -1595,6 +1523,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         coverageNote = null;
         userChangedRules = true;
         VisibilityStateStore.captureIfAbsent(options);
+        // After the capture, so closing the panel still restores the user's own setting. With it
+        // on, a checked class matches that class alone, and the component rule reaches derived
+        // classes by writing each of them (VisibilityRuleModel).
+        options.setUseExactSelectedClasses(true);
     }
 
     /**
@@ -1967,6 +1899,10 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     @Override
     public void onCensus(ClassCensus newCensus) {
         this.census = newCensus;
+        // Before the rows are rebuilt, so a checked component already covers any class that has
+        // just appeared. Image classes only: a project class with no objects here would become a
+        // rule that "matches nothing", and the status strip would count it as an orphan.
+        model.setKnownClasses(newCensus.imageClasses());
         harvesting = false;
         countsUnknown = false;
         countsStale = false;
@@ -2162,17 +2098,11 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     /**
      * What the {@code Active rules} table says about one rule, as a string key.
      *
-     * @param exactMatchesOnly whether QuPath's {@code Exact matches only} is on
-     * @param source what produced the rule
      * @param listedInImage whether the entry is itself one of the classes the list is showing
      * @param reachesObjects whether the rule matches any object the class list is counting
      * @return the status text
      */
-    static String ruleStatusText(boolean exactMatchesOnly, VisibilityRuleModel.RuleSource source,
-                                 boolean listedInImage, boolean reachesObjects) {
-        if (exactMatchesOnly && source != VisibilityRuleModel.RuleSource.CLASS) {
-            return Strings.get("rules.status.exactOnly");
-        }
+    static String ruleStatusText(boolean listedInImage, boolean reachesObjects) {
         if (listedInImage) {
             return Strings.get("rules.status.listed");
         }
@@ -2531,14 +2461,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
         Set<PathClass> present = new LinkedHashSet<>(census.classes());
         for (PathClass entry : model.activeRules()) {
             VisibilityRuleModel.RuleSource ruleSource = model.sourceOf(entry);
-            // An All composite is not a class. Rendering it as one -- "CD45: CD8", built in
-            // alphabetical order rather than the project's naming order -- put a class name in
-            // the one table that states the truth about what is in force, for a class that exists
-            // nowhere in the user's data (finding S9). The sorted build stays; only the label
-            // changes.
-            String name = ruleSource == VisibilityRuleModel.RuleSource.COMPONENTS_ALL && entry != null
-                    ? Strings.format("rules.name.composite", String.join(" + ", new TreeSet<>(entry.toSet())))
-                    : displayName(entry);
+            // Every entry is a real class since 0.4.0: a component rule is written as the classes
+            // it covers, so there is no composite to label.
+            String name = displayName(entry);
             String source = switch (ruleSource) {
                 case CLASS -> Strings.get("rules.source.class");
                 case COMPONENTS_ANY -> Strings.get("rules.source.componentsAny");
@@ -2550,9 +2475,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
             // question and gets the combinatorial case backwards. A rule for CD8 in an image
             // whose objects all carry CD8: GzB has no row of its own and hides thousands of
             // objects, and the table called that "Not in this image" (external tester,
-            // 2026-09-01). The three live statuses now come off the same predicate the Affects
-            // column uses, so the two cannot disagree.
-            String status = ruleStatusText(exactCheck.isSelected(), ruleSource,
+            // 2026-09-01). The three live statuses come off the viewer's own predicate.
+            String status = ruleStatusText(
                     present.contains(entry == null ? PathClass.NULL_CLASS : entry),
                     !ruleReachesNothing(entry));
             rows.add(new RuleRow(entry, name, source, status));
@@ -2591,7 +2515,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      *         {@link #affectedObjects(PathClass)} rather than "is this entry a row above": a rule
      *         is doing its job whenever it reaches an object, and on a combinatorial panel it
      *         usually reaches them through classes containing its parts rather than through a
-     *         class of its own name. Same predicate as the Affects column.
+     *         class of its own name.
      */
     private boolean ruleReachesNothing(PathClass entry) {
         return affectedObjects(entry) == 0;
@@ -2637,9 +2561,7 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
                         ? Strings.format("status.s5.class", name)
                         : Strings.format("status.s5.only", name);
             } else {
-                text = options.getUseExactSelectedClasses()
-                        ? Strings.format("status.s5.only", soloedComponent)
-                        : Strings.format("status.s5.component", soloedComponent);
+                text = Strings.format("status.s5.component", soloedComponent);
             }
             buttons.add(resetButton);
         } else if (showOnly) {
@@ -2723,8 +2645,8 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
      *         classes. An external tester saw <i>"1 rule active -- only objects matching it are
      *         shown. 1 rule has no class in this image."</i> over an image she knew carried those
      *         cells, with the rules table calling the same entry a composite in the same breath
-     *         (2026-09-01). Counting what a rule reaches makes the strip, the rules table and the
-     *         Affects column three views of one number.</p>
+     *         (2026-09-01). Counting what a rule reaches makes the strip and the rules table two
+     *         views of one number.</p>
      */
     private int countOrphanRules() {
         int orphans = 0;
@@ -3146,43 +3068,9 @@ public final class ClassVisibilityPane extends BorderPane implements ClassVisibi
     }
 
     /**
-     * The Affects cell: how many objects a click on this row would act on, right now. Bold when
-     * that is more than the row's own Count, which is the case the Count column alone misreports.
-     * The column tooltip says so, since nothing else on screen does.
-     */
-    private final class AffectsCell extends TableCell<ClassRow, ClassRow> {
-
-        private AffectsCell() {
-            setStyle("-fx-alignment: CENTER-RIGHT;");
-        }
-
-        @Override
-        protected void updateItem(ClassRow item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setText(null);
-                setTooltip(null);
-                setFont(Font.getDefault());
-                return;
-            }
-            if (countsUnknown) {
-                setText("--");
-                setFont(Font.getDefault());
-                return;
-            }
-            long affects = affectedObjects(item.pathClass());
-            setText(COUNTS.format(affects));
-            boolean reachesMore = affects > item.count();
-            setFont(reachesMore
-                    ? Font.font(Font.getDefault().getFamily(), FontWeight.BOLD, Font.getDefault().getSize())
-                    : Font.getDefault());
-        }
-    }
-
-    /**
-     * The class table's Count: objects of exactly this class. Where a click on the row reaches
-     * more than that, the tooltip says how many, because the Affects column that shows it is off
-     * by default.
+     * The class table's Count: objects of exactly this class, which is what a click on the row
+     * acts on while "Exact matches only" is on. If something else has turned it off, the click
+     * reaches supersets too, and the tooltip says how many.
      */
     private final class ClassCountCell extends TableCell<ClassRow, ClassRow> {
 
